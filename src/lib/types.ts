@@ -15,10 +15,21 @@ export type FeedPost = {
   viewsCount: number;
   likesCount: number;
   favoritesCount: number;
+  commentsCount: number;
   createdAt: string;
   author: FeedAuthor;
   viewerHasLiked: boolean;
   viewerHasFavorited: boolean;
+};
+
+export type PostComment = {
+  id: string;
+  postId: string;
+  parentId: string | null;
+  body: string;
+  createdAt: string;
+  author: FeedAuthor;
+  replies: PostComment[];
 };
 
 export type ProfileSummary = {

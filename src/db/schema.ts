@@ -1,5 +1,7 @@
 import { relations } from "drizzle-orm";
 import {
+  type AnyPgColumn,
+  index,
   integer,
   pgTable,
   primaryKey,
@@ -105,10 +107,39 @@ export const postViews = pgTable(
   (table) => [uniqueIndex("post_views_post_viewer_idx").on(table.postId, table.viewerKey)],
 );
 
+export const postComments = pgTable(
+  "post_comments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    postId: uuid("post_id")
+      .notNull()
+      .references(() => posts.id, { onDelete: "cascade" }),
+    authorId: uuid("author_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    parentId: uuid("parent_id").references(
+      (): AnyPgColumn => postComments.id,
+      { onDelete: "cascade" },
+    ),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("post_comments_post_created_idx").on(table.postId, table.createdAt),
+    index("post_comments_parent_idx").on(table.parentId),
+  ],
+);
+
 export const usersRelations = relations(users, ({ many }) => ({
   posts: many(posts),
   likes: many(postLikes),
   favorites: many(postFavorites),
+  comments: many(postComments),
 }));
 
 export const postsRelations = relations(posts, ({ one, many }) => ({
@@ -119,4 +150,24 @@ export const postsRelations = relations(posts, ({ one, many }) => ({
   likes: many(postLikes),
   favorites: many(postFavorites),
   views: many(postViews),
+  comments: many(postComments),
+}));
+
+export const postCommentsRelations = relations(postComments, ({ one, many }) => ({
+  post: one(posts, {
+    fields: [postComments.postId],
+    references: [posts.id],
+  }),
+  author: one(users, {
+    fields: [postComments.authorId],
+    references: [users.id],
+  }),
+  parent: one(postComments, {
+    fields: [postComments.parentId],
+    references: [postComments.id],
+    relationName: "commentReplies",
+  }),
+  replies: many(postComments, {
+    relationName: "commentReplies",
+  }),
 }));

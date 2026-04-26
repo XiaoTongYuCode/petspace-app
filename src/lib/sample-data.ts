@@ -27,6 +27,7 @@ export const samplePosts: FeedPost[] = [
     viewsCount: 4210,
     likesCount: 238,
     favoritesCount: 74,
+    commentsCount: 3,
     createdAt: new Date(Date.now() - 1000 * 60 * 24).toISOString(),
     author: {
       id: "sample-author-1",
@@ -47,6 +48,7 @@ export const samplePosts: FeedPost[] = [
     viewsCount: 3115,
     likesCount: 186,
     favoritesCount: 52,
+    commentsCount: 2,
     createdAt: new Date(Date.now() - 1000 * 60 * 68).toISOString(),
     author: {
       id: "sample-author-2",
@@ -67,6 +69,7 @@ export const samplePosts: FeedPost[] = [
     viewsCount: 2375,
     likesCount: 162,
     favoritesCount: 39,
+    commentsCount: 1,
     createdAt: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
     author: {
       id: "sample-author-3",

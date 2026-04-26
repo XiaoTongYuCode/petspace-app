@@ -26,5 +26,5 @@ export function normalizeHandle(value: string) {
 }
 
 export function initials(name: string) {
-  return name.trim().slice(0, 2).toUpperCase() || "PS";
+  return Array.from(name.trim()).at(0)?.toUpperCase() || "P";
 }

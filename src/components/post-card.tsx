@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, Eye, Heart, MapPin } from "lucide-react";
+import { Bookmark, Eye, Heart, MapPin, MessageCircle } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -115,7 +115,7 @@ export function PostCard({ post, priority = false }: PostCardProps) {
           </div>
         </div>
         <span className="rounded-full bg-[#fff3df] px-3 py-1 text-xs font-bold text-[#9a603f] ring-1 ring-black/5">
-          {isSample ? `演示 · ${post.category}` : post.category}
+          {isSample ? `${post.category}` : post.category}
         </span>
       </div>
 
@@ -134,7 +134,7 @@ export function PostCard({ post, priority = false }: PostCardProps) {
         />
       </Link>
 
-      <div className="grid grid-cols-3 border-t border-black/10 text-[13px] font-semibold text-[#5a493b]">
+      <div className="grid grid-cols-4 border-t border-black/10 text-[13px] font-semibold text-[#5a493b]">
         <button
           type="button"
           onClick={toggleLike}
@@ -148,6 +148,15 @@ export function PostCard({ post, priority = false }: PostCardProps) {
           />
           {compactNumber(likesCount)}
         </button>
+        <Link
+          href={`/post/${post.id}#comments`}
+          data-testid={`comments-${post.id}`}
+          aria-label="查看评论"
+          className="flex h-12 items-center justify-center gap-2 transition hover:bg-[#fff8ed]"
+        >
+          <MessageCircle className="h-4 w-4" />
+          {compactNumber(post.commentsCount)}
+        </Link>
         <div className="flex h-12 items-center justify-center gap-2">
           <Eye className="h-4 w-4" />
           {compactNumber(viewsCount)}

@@ -1,11 +1,18 @@
-import { and, count, desc, eq, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import { getClerkSessionClaims, getClerkUser, getClerkUserId } from "@/lib/auth";
 import { normalizeHandle } from "@/lib/format";
 import { samplePosts, sampleProfile } from "@/lib/sample-data";
-import type { FeedPost, ProfileSummary } from "@/lib/types";
+import type { FeedPost, PostComment, ProfileSummary } from "@/lib/types";
 import { getDbOrNull } from "@/db";
 import { isDatabaseReadFallbackError } from "@/db/errors";
-import { postFavorites, postLikes, posts, postViews, users } from "@/db/schema";
+import {
+  postComments,
+  postFavorites,
+  postLikes,
+  posts,
+  postViews,
+  users,
+} from "@/db/schema";
 
 type CreatePostInput = {
   caption: string;
@@ -13,6 +20,12 @@ type CreatePostInput = {
   imageObjectKey?: string | null;
   category?: string;
   location?: string | null;
+};
+
+type CreateCommentInput = {
+  postId: string;
+  body: string;
+  parentId?: string | null;
 };
 
 type ProfileUpdateInput = {
@@ -50,6 +63,7 @@ function mapPostRow(row: {
   viewsCount: number;
   likesCount: number;
   favoritesCount: number;
+  commentsCount: number;
   createdAt: Date | string;
   authorId: string;
   authorHandle: string;
@@ -68,6 +82,7 @@ function mapPostRow(row: {
     viewsCount: row.viewsCount,
     likesCount: row.likesCount,
     favoritesCount: row.favoritesCount,
+    commentsCount: row.commentsCount,
     createdAt: toIso(row.createdAt),
     author: {
       id: row.authorId,
@@ -78,6 +93,57 @@ function mapPostRow(row: {
     viewerHasLiked: row.viewerHasLiked,
     viewerHasFavorited: row.viewerHasFavorited,
   };
+}
+
+function mapCommentRow(row: {
+  commentId: string;
+  postId: string;
+  parentId: string | null;
+  body: string;
+  createdAt: Date | string;
+  authorId: string;
+  authorHandle: string;
+  authorDisplayName: string;
+  authorAvatarUrl: string | null;
+}): PostComment {
+  return {
+    id: row.commentId,
+    postId: row.postId,
+    parentId: row.parentId,
+    body: row.body,
+    createdAt: toIso(row.createdAt),
+    author: {
+      id: row.authorId,
+      handle: row.authorHandle,
+      displayName: row.authorDisplayName,
+      avatarUrl: row.authorAvatarUrl,
+    },
+    replies: [],
+  };
+}
+
+function buildCommentTree(comments: PostComment[]) {
+  const commentsById = new Map<string, PostComment>();
+  const roots: PostComment[] = [];
+
+  for (const comment of comments) {
+    commentsById.set(comment.id, { ...comment, replies: [] });
+  }
+
+  for (const comment of commentsById.values()) {
+    if (comment.parentId) {
+      const parent = commentsById.get(comment.parentId);
+
+      if (parent) {
+        parent.replies.push(comment);
+        continue;
+      }
+    }
+
+    roots.push(comment);
+  }
+
+  return roots;
 }
 
 async function getViewer() {
@@ -269,6 +335,7 @@ export async function getFeedPosts(limit = 20): Promise<FeedPost[]> {
         viewsCount: posts.viewsCount,
         likesCount: posts.likesCount,
         favoritesCount: posts.favoritesCount,
+        commentsCount: sql<number>`(select count(*)::int from ${postComments} where ${postComments.postId} = ${posts.id})`,
         createdAt: posts.createdAt,
         authorId: users.id,
         authorHandle: users.handle,
@@ -318,6 +385,7 @@ export async function getPostById(postId: string): Promise<FeedPost | null> {
         viewsCount: posts.viewsCount,
         likesCount: posts.likesCount,
         favoritesCount: posts.favoritesCount,
+        commentsCount: sql<number>`(select count(*)::int from ${postComments} where ${postComments.postId} = ${posts.id})`,
         createdAt: posts.createdAt,
         authorId: users.id,
         authorHandle: users.handle,
@@ -339,6 +407,83 @@ export async function getPostById(postId: string): Promise<FeedPost | null> {
   } catch {
     return samplePosts.find((post) => post.id === postId) ?? samplePosts[0] ?? null;
   }
+}
+
+export async function getPostComments(postId: string): Promise<PostComment[]> {
+  const db = getDbOrNull();
+
+  if (!db || postId.startsWith("sample-")) {
+    return [];
+  }
+
+  try {
+    const rows = await db
+      .select({
+        commentId: postComments.id,
+        postId: postComments.postId,
+        parentId: postComments.parentId,
+        body: postComments.body,
+        createdAt: postComments.createdAt,
+        authorId: users.id,
+        authorHandle: users.handle,
+        authorDisplayName: users.displayName,
+        authorAvatarUrl: users.avatarUrl,
+      })
+      .from(postComments)
+      .innerJoin(users, eq(postComments.authorId, users.id))
+      .where(eq(postComments.postId, postId))
+      .orderBy(asc(postComments.createdAt));
+
+    return buildCommentTree(rows.map(mapCommentRow));
+  } catch {
+    return [];
+  }
+}
+
+export async function createPostComment(input: CreateCommentInput) {
+  const db = getDbOrNull();
+  const user = await ensureCurrentUser();
+
+  if (!db || !user) {
+    throw new Error("请先登录后再评论。");
+  }
+
+  const body = input.body.trim();
+
+  if (!body) {
+    throw new Error("请输入评论内容。");
+  }
+
+  const [post] = await db
+    .select({ id: posts.id })
+    .from(posts)
+    .where(eq(posts.id, input.postId))
+    .limit(1);
+
+  if (!post) {
+    throw new Error("动态不存在。");
+  }
+
+  if (input.parentId) {
+    const [parent] = await db
+      .select({ postId: postComments.postId })
+      .from(postComments)
+      .where(eq(postComments.id, input.parentId))
+      .limit(1);
+
+    if (!parent || parent.postId !== input.postId) {
+      throw new Error("回复的评论不存在。");
+    }
+  }
+
+  await db.insert(postComments).values({
+    postId: input.postId,
+    authorId: user.id,
+    parentId: input.parentId ?? null,
+    body: body.slice(0, 500),
+  });
+
+  return getPostComments(input.postId);
 }
 
 export async function getPostsByAuthorId(authorId: string): Promise<FeedPost[]> {
@@ -363,6 +508,7 @@ export async function getPostsByAuthorId(authorId: string): Promise<FeedPost[]> 
         viewsCount: posts.viewsCount,
         likesCount: posts.likesCount,
         favoritesCount: posts.favoritesCount,
+        commentsCount: sql<number>`(select count(*)::int from ${postComments} where ${postComments.postId} = ${posts.id})`,
         createdAt: posts.createdAt,
         authorId: users.id,
         authorHandle: users.handle,

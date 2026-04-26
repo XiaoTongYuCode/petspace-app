@@ -34,11 +34,11 @@ export default async function Home() {
               <div>
                 <p className="text-sm font-semibold text-[#f2b84b]">Petspace</p>
                 <h1 className="mt-2 text-2xl font-black tracking-normal sm:text-3xl">
-                  分享今日宠物生活
+                  分享今日
                 </h1>
               </div>
               <p className="max-w-sm text-sm leading-6 text-[#f7dfbf]">
-                用照片记录宠物的日常小事，也把喜欢、浏览和收藏留给那些值得回看的瞬间。
+                用照片记录小家伙的日常小事，也把喜欢、浏览和收藏留给那些值得回看的瞬间 ~
               </p>
             </div>
           </section>

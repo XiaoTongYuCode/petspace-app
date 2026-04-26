@@ -10,10 +10,10 @@ import { AuthActions } from "@/components/auth-actions";
 import { Logo } from "@/components/logo";
 
 const navItems = [
-  { href: "/", label: "广场", icon: Home },
+  { href: "/", label: "宠物广场", icon: Home },
   { href: "/compose", label: "发布动态", icon: ImagePlus },
   { href: "/u/petspace", label: "发现", icon: Compass },
-  { href: "/me", label: "个人首页", icon: UserRound },
+  { href: "/me", label: "我的", icon: UserRound },
   { href: "/me", label: "收藏", icon: Bookmark },
 ];
 

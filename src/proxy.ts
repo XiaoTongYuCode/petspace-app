@@ -9,7 +9,6 @@ export const config = {
     "/api/me/:path*",
     "/api/oss/:path*",
     "/api/posts",
-    "/api/posts/:id/like",
-    "/api/posts/:id/favorite",
+    "/api/posts/:path*",
   ],
 };

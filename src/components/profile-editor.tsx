@@ -1,8 +1,8 @@
 "use client";
 
+import { SignInButton } from "@clerk/nextjs";
 import { Camera, Loader2, Save } from "lucide-react";
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { Avatar } from "@/components/avatar";
@@ -84,17 +84,27 @@ export function ProfileEditor({ profile }: ProfileEditorProps) {
 
   if (!profile) {
     return (
-      <section className="rounded-lg bg-white/70 p-5 ring-1 ring-black/10">
-        <h1 className="text-2xl font-black text-[#17120d]">个人首页</h1>
-        <p className="mt-2 max-w-xl text-sm leading-6 text-[#5a493b]">
-          暂时还没有找到你的主页资料。登录后可以在这里整理背景图和简介；现在也可以先回广场看看大家的宠物日常。
-        </p>
-        <Link
-          href="/"
-          className="mt-4 inline-flex h-9 items-center rounded-full bg-[#17120d] px-4 text-sm font-semibold text-[#fff7ea] transition hover:bg-[#2a2119]"
-        >
-          回到广场
-        </Link>
+      <section
+        data-testid="signed-out-profile-card"
+        className="rounded-lg bg-white/76 px-5 py-10 text-center shadow-sm ring-1 ring-black/10 sm:px-8 sm:py-12"
+      >
+        <div className="mx-auto max-w-xl">
+          <p className="text-sm font-bold text-[#d75d3f]">我的主页</p>
+          <h1 className="mt-3 text-2xl font-black text-[#17120d] sm:text-3xl">
+            登录后整理你的宠物主页
+          </h1>
+          <p className="mx-auto mt-4 max-w-lg text-sm leading-7 text-[#5a493b]">
+            添加背景图、简介和昵称，把你与宠物的日常集中展示给大家。
+          </p>
+          <SignInButton mode="modal">
+            <button
+              data-testid="profile-login-button"
+              className="mt-7 inline-flex h-10 items-center justify-center rounded-full bg-[#17120d] px-7 text-sm font-bold text-[#fff7ea] shadow-sm transition hover:bg-[#2a2119] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e46645]/40"
+            >
+              登录
+            </button>
+          </SignInButton>
+        </div>
       </section>
     );
   }
@@ -110,13 +120,12 @@ export function ProfileEditor({ profile }: ProfileEditorProps) {
           className="object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-white/80 via-white/25 to-transparent" />
-        <label className="absolute bottom-4 right-4 z-10 inline-flex h-9 cursor-pointer items-center gap-2 rounded-full bg-black/70 px-3.5 text-sm font-semibold text-white backdrop-blur transition hover:bg-black">
+        <label className="absolute bottom-4 right-4 z-10 inline-flex h-8 cursor-pointer items-center gap-2 rounded-full bg-black/70 px-2 text-sm font-semibold text-white backdrop-blur transition hover:bg-black">
           {uploading === "cover" ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <Camera className="h-4 w-4" />
           )}
-          背景图
           <input
             type="file"
             accept="image/jpeg,image/png,image/webp,image/gif"
@@ -130,7 +139,7 @@ export function ProfileEditor({ profile }: ProfileEditorProps) {
       </div>
 
       <div className="p-5">
-        <div className="relative z-10 -mt-16 flex items-end gap-4">
+        <div className="pointer-events-none relative z-10 -mt-16 flex items-end gap-4">
           <Avatar src={profile.avatarUrl} name={displayName || profile.displayName} size="lg" />
         </div>
 
@@ -178,14 +187,14 @@ export function ProfileEditor({ profile }: ProfileEditorProps) {
           <button
             type="submit"
             disabled={isSaving || Boolean(uploading)}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[#e46645] px-4 text-sm font-bold text-white transition hover:bg-[#d3583b] disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-8 items-center justify-center gap-2 rounded-full bg-[#e46645] px-4 text-sm font-bold text-white transition hover:bg-[#d3583b] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSaving ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Save className="h-4 w-4" />
             )}
-            保存主页
+            保存
           </button>
         </div>
       </div>

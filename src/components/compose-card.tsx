@@ -148,7 +148,8 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
     <form
       onSubmit={submitPost}
       data-testid="compose-card"
-      className="rounded-lg bg-white/70 p-3 shadow-sm ring-1 ring-black/10 sm:p-4"
+      className="rounded-lg bg-white/82 p-3 shadow-sm ring-1 ring-black/10 transition focus-within:shadow-md focus-within:ring-[#e46645]/25 sm:p-4"
+      style={{paddingBottom:'10px'}}
     >
       <div>
         <label htmlFor="caption" className="sr-only">
@@ -161,7 +162,7 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
           disabled={isDisabled}
           maxLength={500}
           rows={2}
-          placeholder="分享今日宠物生活..."
+          placeholder="今天你的小家伙在干嘛？"
           className="min-h-16 w-full resize-none border-0 bg-transparent px-1 py-1 text-base leading-6 text-[#17120d] outline-none placeholder:text-[#9a826d]"
         />
       </div>
@@ -187,9 +188,9 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
         </div>
       ) : null}
 
-      <div className="mt-3 flex flex-col gap-3 border-t border-black/10 pt-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-[#5a493b] transition hover:bg-[#fffaf1] focus-within:bg-[#fffaf1]">
+      <div className="mt-3 flex flex-col gap-3 pt-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="inline-flex w-fit flex-wrap items-center gap-2 rounded-full">
+          <label className="inline-flex h-9 min-w-9 cursor-pointer items-center justify-center rounded-full text-[#5a493b] transition hover:bg-white focus-within:bg-white focus-within:ring-2 focus-within:ring-[#e46645]/25">
             <ImagePlus className="h-5 w-5" />
             <span className="sr-only">选择图片</span>
             <input
@@ -204,10 +205,13 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
             type="button"
             onClick={requestBrowserLocation}
             disabled={isDisabled || isLocating}
+            data-testid="location-button"
             aria-label={location ? `已获取定位：${location}` : "获取当前位置"}
             title={location ? `已获取定位：${location}` : "获取当前位置"}
-            className={`inline-flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-[#fffaf1] disabled:cursor-not-allowed disabled:opacity-50 ${
-              location ? "text-[#d75d3f]" : "text-[#5a493b]"
+            className={`inline-flex h-9 min-w-9 items-center justify-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${
+              location && !isLocating
+                ? "gap-1.5 text-[#c44f35]"
+                : "text-[#5a493b] hover:bg-white"
             }`}
           >
             {isLocating ? (
@@ -215,19 +219,24 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
             ) : (
               <MapPin className="h-5 w-5" />
             )}
+            {location && !isLocating ? (
+              <span data-testid="location-label" className="text-xs font-bold">
+                定位
+              </span>
+            ) : null}
           </button>
         </div>
         <button
           type="submit"
           disabled={isSubmitting || isDisabled}
-          className="inline-flex h-9 items-center justify-center gap-2 rounded-full bg-[#e46645] px-4 text-sm font-bold text-white transition hover:bg-[#d3583b] disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-8 items-center justify-center gap-2 rounded-full bg-[#e46645] px-4 text-sm font-bold text-white transition hover:bg-[#d3583b] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isSubmitting ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <Send className="h-4 w-4" />
           )}
-          发布动态
+          发布
         </button>
       </div>
 
