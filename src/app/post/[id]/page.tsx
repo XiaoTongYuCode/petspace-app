@@ -30,7 +30,10 @@ export default async function PostPage({
         <main className="min-w-0 space-y-5">
           <PostCard post={post} priority />
         </main>
-        <ProfileSummaryCard profile={profile ?? sampleProfile} />
+        <ProfileSummaryCard
+          profile={profile ?? sampleProfile}
+          editable={Boolean(profile)}
+        />
       </div>
       <MobileNav />
     </div>

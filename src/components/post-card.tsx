@@ -130,7 +130,7 @@ export function PostCard({ post, priority = false }: PostCardProps) {
           width={1200}
           height={560}
           priority={priority}
-          className="aspect-[4/3] w-full object-cover transition duration-500 hover:scale-[1.015]"
+          className="aspect-[16/10] max-h-[420px] w-full object-cover transition duration-500 hover:scale-[1.015]"
         />
       </Link>
 
@@ -140,7 +140,7 @@ export function PostCard({ post, priority = false }: PostCardProps) {
           onClick={toggleLike}
           data-testid={`like-${post.id}`}
           aria-label={liked ? "取消点赞" : "点赞"}
-          className="flex h-11 items-center justify-center gap-2 transition hover:bg-[#fff8ed]"
+          className="flex h-12 items-center justify-center gap-2 transition hover:bg-[#fff8ed]"
           aria-pressed={liked}
         >
           <Heart
@@ -148,7 +148,7 @@ export function PostCard({ post, priority = false }: PostCardProps) {
           />
           {compactNumber(likesCount)}
         </button>
-        <div className="flex h-11 items-center justify-center gap-2">
+        <div className="flex h-12 items-center justify-center gap-2">
           <Eye className="h-4 w-4" />
           {compactNumber(viewsCount)}
         </div>
@@ -157,7 +157,7 @@ export function PostCard({ post, priority = false }: PostCardProps) {
           onClick={toggleFavorite}
           data-testid={`favorite-${post.id}`}
           aria-label={favorited ? "取消收藏" : "收藏"}
-          className="flex h-11 items-center justify-center gap-2 transition hover:bg-[#fff8ed]"
+          className="flex h-12 items-center justify-center gap-2 transition hover:bg-[#fff8ed]"
           aria-pressed={favorited}
         >
           <Bookmark

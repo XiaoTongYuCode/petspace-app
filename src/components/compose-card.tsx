@@ -19,6 +19,7 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const previewUrlRef = useRef<string | null>(null);
 
@@ -46,6 +47,44 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
     const objectUrl = URL.createObjectURL(nextFile);
     previewUrlRef.current = objectUrl;
     setPreviewUrl(objectUrl);
+  }
+
+  function requestBrowserLocation() {
+    if (isDisabled || isLocating) {
+      return;
+    }
+
+    setError(null);
+
+    if (!("geolocation" in navigator)) {
+      setError("当前浏览器不支持定位。");
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setLocation(
+          `当前位置 ${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`,
+        );
+        setIsLocating(false);
+      },
+      (positionError) => {
+        setIsLocating(false);
+
+        if (positionError.code === positionError.PERMISSION_DENIED) {
+          setError("需要允许浏览器定位权限后才能获取位置。");
+          return;
+        }
+
+        setError(
+          positionError.code === positionError.TIMEOUT
+            ? "定位超时，请稍后再试。"
+            : "暂时无法获取定位。",
+        );
+      },
+      { enableHighAccuracy: true, maximumAge: 60000, timeout: 10000 },
+    );
   }
 
   async function submitPost(event: FormEvent<HTMLFormElement>) {
@@ -150,9 +189,9 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
 
       <div className="mt-3 flex flex-col gap-3 border-t border-black/10 pt-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-full bg-[#fffaf1] px-3 text-sm font-semibold text-[#5a493b] ring-1 ring-black/10 transition hover:bg-white">
-            <ImagePlus className="h-4 w-4" />
-            图片
+          <label className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-[#5a493b] transition hover:bg-[#fffaf1] focus-within:bg-[#fffaf1]">
+            <ImagePlus className="h-5 w-5" />
+            <span className="sr-only">选择图片</span>
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp,image/gif"
@@ -161,17 +200,22 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
               onChange={(event) => updateFile(event.target.files?.[0] ?? null)}
             />
           </label>
-          <label className="inline-flex h-9 items-center gap-2 rounded-full bg-[#fffaf1] px-3 text-sm font-semibold text-[#5a493b] ring-1 ring-black/10">
-            <MapPin className="h-4 w-4" />
-            <input
-              value={location}
-              onChange={(event) => setLocation(event.target.value)}
-              disabled={isDisabled}
-              maxLength={80}
-              placeholder="地点"
-              className="w-24 bg-transparent outline-none placeholder:text-[#9a826d]"
-            />
-          </label>
+          <button
+            type="button"
+            onClick={requestBrowserLocation}
+            disabled={isDisabled || isLocating}
+            aria-label={location ? `已获取定位：${location}` : "获取当前位置"}
+            title={location ? `已获取定位：${location}` : "获取当前位置"}
+            className={`inline-flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-[#fffaf1] disabled:cursor-not-allowed disabled:opacity-50 ${
+              location ? "text-[#d75d3f]" : "text-[#5a493b]"
+            }`}
+          >
+            {isLocating ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <MapPin className="h-5 w-5" />
+            )}
+          </button>
         </div>
         <button
           type="submit"

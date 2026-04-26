@@ -52,7 +52,10 @@ export default async function Home() {
             ))}
           </div>
         </main>
-        <ProfileSummaryCard profile={profile} />
+        <ProfileSummaryCard
+          profile={profile}
+          editable={Boolean(currentProfile)}
+        />
       </div>
       <MobileNav />
     </div>

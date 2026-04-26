@@ -8,9 +8,13 @@ import type { ProfileSummary } from "@/lib/types";
 
 type ProfileSummaryCardProps = {
   profile: ProfileSummary;
+  editable?: boolean;
 };
 
-export function ProfileSummaryCard({ profile }: ProfileSummaryCardProps) {
+export function ProfileSummaryCard({
+  profile,
+  editable = false,
+}: ProfileSummaryCardProps) {
   const coverUrl = profile.coverUrl ?? DEFAULT_PROFILE_COVER_URL;
   const stats = [
     { label: "总访问", value: profile.totalViews + profile.profileViews },
@@ -33,13 +37,15 @@ export function ProfileSummaryCard({ profile }: ProfileSummaryCardProps) {
       <div className="px-5 pb-5">
         <div className="relative z-10 -mt-10 flex items-end justify-between">
           <Avatar src={profile.avatarUrl} name={profile.displayName} size="lg" />
-          <Link
-            href="/me"
-            className="inline-flex h-8 items-center gap-2 rounded-full bg-[#17120d] px-3 text-xs font-semibold text-[#fff7ea] transition hover:bg-[#2a2119]"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-            编辑
-          </Link>
+          {editable ? (
+            <Link
+              href="/me"
+              className="inline-flex h-8 items-center gap-2 rounded-full bg-[#17120d] px-3 text-xs font-semibold text-[#fff7ea] transition hover:bg-[#2a2119]"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              编辑
+            </Link>
+          ) : null}
         </div>
         <div className="mt-4">
           <Link

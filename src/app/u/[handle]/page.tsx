@@ -4,7 +4,7 @@ import { ProfileSummaryCard } from "@/components/profile-summary-card";
 import { DesktopNav, MobileNav, SiteHeader } from "@/components/site-shell";
 import { Avatar } from "@/components/avatar";
 import { compactNumber } from "@/lib/format";
-import { getProfileByHandle } from "@/lib/data";
+import { getCurrentUserProfile, getProfileByHandle } from "@/lib/data";
 import { DEFAULT_PROFILE_COVER_URL } from "@/lib/profile-defaults";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,10 @@ export default async function ProfilePage({
   params: Promise<{ handle: string }>;
 }) {
   const { handle } = await params;
-  const result = await getProfileByHandle(handle);
+  const [result, currentProfile] = await Promise.all([
+    getProfileByHandle(handle),
+    getCurrentUserProfile(),
+  ]);
 
   if (!result) {
     notFound();
@@ -23,6 +26,7 @@ export default async function ProfilePage({
 
   const { profile, posts } = result;
   const coverUrl = profile.coverUrl ?? DEFAULT_PROFILE_COVER_URL;
+  const isOwnProfile = currentProfile?.id === profile.id;
 
   return (
     <div className="min-h-screen bg-[#fef5e7] pb-32 lg:pb-8">
@@ -84,7 +88,7 @@ export default async function ProfilePage({
             ))}
           </div>
         </main>
-        <ProfileSummaryCard profile={profile} />
+        <ProfileSummaryCard profile={profile} editable={isOwnProfile} />
       </div>
       <MobileNav />
     </div>
