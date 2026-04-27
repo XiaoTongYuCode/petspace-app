@@ -1,6 +1,6 @@
 "use client";
 
-import { ImagePlus, Loader2, MapPin, Save, Send, X } from "lucide-react";
+import { ImagePlus, Loader2, MapPin, Send, X } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState } from "react";
@@ -10,41 +10,41 @@ type ComposeCardProps = {
   disabledReason?: string | null;
 };
 
-type ComposeDraft = {
-  id: string;
+type ComposeAutosave = {
   caption: string;
   location: string;
-  updatedAt: string;
 };
 
-const DRAFTS_STORAGE_KEY = "petspace-compose-drafts-v1";
-const MAX_DRAFTS = 8;
+const DRAFT_STORAGE_KEY = "petspace-compose-autosave-v2";
 
-function getStoredDrafts(): ComposeDraft[] {
+function getStoredAutosave(): ComposeAutosave | null {
   if (typeof window === "undefined") {
-    return [];
+    return null;
   }
+
   try {
-    const saved = window.localStorage.getItem(DRAFTS_STORAGE_KEY);
+    const saved = window.localStorage.getItem(DRAFT_STORAGE_KEY);
     if (!saved) {
-      return [];
+      return null;
     }
-    const parsed = JSON.parse(saved) as ComposeDraft[];
-    if (!Array.isArray(parsed)) {
-      return [];
+    const parsed = JSON.parse(saved) as Partial<ComposeAutosave>;
+    if (typeof parsed !== "object" || parsed === null) {
+      return null;
     }
-    return parsed.slice(0, MAX_DRAFTS);
+    return {
+      caption: typeof parsed.caption === "string" ? parsed.caption : "",
+      location: typeof parsed.location === "string" ? parsed.location : "",
+    };
   } catch {
-    return [];
+    return null;
   }
 }
 
 export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
   const router = useRouter();
   const isDisabled = Boolean(disabledReason);
-  const [drafts, setDrafts] = useState<ComposeDraft[]>(() => getStoredDrafts());
-  const [caption, setCaption] = useState(() => getStoredDrafts()[0]?.caption ?? "");
-  const [location, setLocation] = useState(() => getStoredDrafts()[0]?.location ?? "");
+  const [caption, setCaption] = useState(() => getStoredAutosave()?.caption ?? "");
+  const [location, setLocation] = useState(() => getStoredAutosave()?.location ?? "");
   const [challengeTag, setChallengeTag] = useState("#今日宠物微笑");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,40 +68,6 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
     };
   }, []);
 
-  function saveDraftSnapshot() {
-    if (typeof window === "undefined") {
-      return;
-    }
-    if (!caption.trim() && !location.trim()) {
-      return;
-    }
-    const nextDraft: ComposeDraft = {
-      id: crypto.randomUUID(),
-      caption: caption.trim(),
-      location: location.trim(),
-      updatedAt: new Date().toISOString(),
-    };
-    const nextDrafts = [nextDraft, ...drafts].slice(0, MAX_DRAFTS);
-    setDrafts(nextDrafts);
-    window.localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(nextDrafts));
-    setSuccess("草稿已保存。");
-  }
-
-  function applyDraft(draft: ComposeDraft) {
-    setCaption(draft.caption);
-    setLocation(draft.location);
-    setSuccess("已载入草稿。");
-  }
-
-  function removeDraft(draftId: string) {
-    if (typeof window === "undefined") {
-      return;
-    }
-    const nextDrafts = drafts.filter((draft) => draft.id !== draftId);
-    setDrafts(nextDrafts);
-    window.localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(nextDrafts));
-  }
-
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -111,22 +77,14 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
     }
     autoSaveTimeoutRef.current = setTimeout(() => {
       if (!caption.trim() && !location.trim()) {
+        window.localStorage.removeItem(DRAFT_STORAGE_KEY);
         return;
       }
-      setDrafts((currentDrafts) => {
-        const currentAutoDraft: ComposeDraft = {
-          id: "autosave",
-          caption: caption.trim(),
-          location: location.trim(),
-          updatedAt: new Date().toISOString(),
-        };
-        const withoutAutosave = currentDrafts.filter(
-          (draft) => draft.id !== "autosave",
-        );
-        const nextDrafts = [currentAutoDraft, ...withoutAutosave].slice(0, MAX_DRAFTS);
-        window.localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(nextDrafts));
-        return nextDrafts;
-      });
+      const autosaveData: ComposeAutosave = {
+        caption: caption.trim(),
+        location: location.trim(),
+      };
+      window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(autosaveData));
     }, 800);
 
     return () => {
@@ -256,7 +214,9 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
       updateFile(null);
       setUploadProgress(0);
       setSuccess("动态已发布。");
-      removeDraft("autosave");
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+      }
       router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "发布失败。");
@@ -272,28 +232,21 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
       className="rounded-lg bg-white/82 p-3 shadow-sm ring-1 ring-black/10 transition focus-within:shadow-md focus-within:ring-[#e46645]/25 sm:p-4"
       style={{ paddingBottom: "10px" }}
     >
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-[#f0dbc1] bg-[#fff8ed] px-3 py-2 text-xs text-[#6b5747]">
-        <span className="font-semibold">草稿箱：{drafts.length} 条（自动保存已开启）</span>
-        <div className="inline-flex items-center gap-2">
+      <div className="mb-2 flex flex-wrap gap-2">
+        {["#今日宠物微笑", "#遛弯地图", "#本周萌宠挑战"].map((tag) => (
           <button
+            key={tag}
             type="button"
-            onClick={saveDraftSnapshot}
-            disabled={isDisabled}
-            className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 font-semibold transition hover:bg-[#fff2dd] disabled:opacity-60"
+            onClick={() => setChallengeTag(tag)}
+            className={`rounded-full px-2.5 py-1 text-xs font-semibold transition ${
+              challengeTag === tag
+                ? "bg-[#f2b84b] text-[#4f3a0f]"
+                : "bg-[#fff3df] text-[#8f6a22] hover:bg-[#ffe7bf]"
+            }`}
           >
-            <Save className="h-3.5 w-3.5" />
-            保存草稿
+            {tag}
           </button>
-          {drafts[0] ? (
-            <button
-              type="button"
-              onClick={() => applyDraft(drafts[0])}
-              className="rounded-full bg-white px-2.5 py-1 font-semibold transition hover:bg-[#fff2dd]"
-            >
-              恢复最近草稿
-            </button>
-          ) : null}
-        </div>
+        ))}
       </div>
 
       <div>
@@ -383,23 +336,6 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
           )}
           发布
         </button>
-      </div>
-
-      <div className="mt-2 flex flex-wrap gap-2">
-        {["#今日宠物微笑", "#遛弯地图", "#本周萌宠挑战"].map((tag) => (
-          <button
-            key={tag}
-            type="button"
-            onClick={() => setChallengeTag(tag)}
-            className={`rounded-full px-2.5 py-1 text-xs font-semibold transition ${
-              challengeTag === tag
-                ? "bg-[#f2b84b] text-[#4f3a0f]"
-                : "bg-[#fff3df] text-[#8f6a22] hover:bg-[#ffe7bf]"
-            }`}
-          >
-            {tag}
-          </button>
-        ))}
       </div>
 
       {isSubmitting ? (
