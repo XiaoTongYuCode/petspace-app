@@ -168,7 +168,7 @@ export function PostCard({ post, priority = false }: PostCardProps) {
     <article
       ref={articleRef}
       data-testid={`post-card-${post.id}`}
-      className="overflow-hidden rounded-lg bg-white/72 shadow-sm ring-1 ring-black/10 [content-visibility:auto]"
+      className="overflow-hidden rounded-xl bg-white/78 shadow-[0_14px_28px_-24px_rgba(23,18,13,0.85)] ring-1 ring-black/10 [content-visibility:auto]"
     >
       <div className="flex items-start justify-between gap-4 p-4 sm:p-5">
         <div className="flex min-w-0 items-center gap-3">
@@ -204,7 +204,10 @@ export function PostCard({ post, priority = false }: PostCardProps) {
       <Link href={`/post/${post.id}`} className="block bg-[#efd7b5]">
         <div className="relative">
           {!imageLoaded ? (
-            <div className="absolute inset-0 animate-pulse bg-[#ead4b3]" aria-hidden="true" />
+            <div
+              className="absolute inset-0 animate-pulse bg-[linear-gradient(90deg,#e7cfac_20%,#f0ddc2_50%,#e7cfac_80%)]"
+              aria-hidden="true"
+            />
           ) : null}
           <Image
             src={post.imageUrl}
