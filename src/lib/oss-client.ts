@@ -2,10 +2,19 @@
 
 import type { OssStsResponse } from "@/lib/oss";
 
+type UploadImageOptions = {
+  maxRetries?: number;
+  onProgress?: (percent: number) => void;
+  onRetry?: (attempt: number, error: unknown) => void;
+};
+
 export async function uploadImageToOss(
   file: File,
   purpose: "post" | "avatar" | "cover",
+  options: UploadImageOptions = {},
 ) {
+  const { maxRetries = 2, onProgress, onRetry } = options;
+
   if (!file.type.startsWith("image/")) {
     throw new Error("请选择图片文件。");
   }
@@ -46,35 +55,55 @@ export async function uploadImageToOss(
     secure: true,
   });
 
-  try {
-    await client.put(token.objectKey, file);
-  } catch (error) {
-    const verifyResponse = await fetch("/api/oss/verify", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        purpose,
+  const maxAttempts = Math.max(1, maxRetries + 1);
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await client.multipartUpload(token.objectKey, file, {
+        progress(progressValue: number) {
+          onProgress?.(Math.min(100, Math.max(0, Math.round(progressValue * 100))));
+        },
+      });
+
+      onProgress?.(100);
+
+      return {
+        url: token.publicUrl,
         objectKey: token.objectKey,
-      }),
-    });
-    const verifyBody = (await verifyResponse.json().catch(() => null)) as
-      | { exists?: boolean; url?: string; objectKey?: string }
-      | null;
+      };
+    } catch (error) {
+      const verifyResponse = await fetch("/api/oss/verify", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          purpose,
+          objectKey: token.objectKey,
+        }),
+      });
+      const verifyBody = (await verifyResponse.json().catch(() => null)) as
+        | { exists?: boolean; url?: string; objectKey?: string }
+        | null;
 
-    if (!verifyResponse.ok || !verifyBody?.exists) {
-      throw error;
+      if (verifyResponse.ok && verifyBody?.exists) {
+        onProgress?.(100);
+        return {
+          url: verifyBody.url ?? token.publicUrl,
+          objectKey: verifyBody.objectKey ?? token.objectKey,
+        };
+      }
+
+      if (attempt >= maxAttempts) {
+        throw error;
+      }
+
+      onRetry?.(attempt, error);
+      await new Promise((resolve) => {
+        setTimeout(resolve, 350 * attempt);
+      });
     }
-
-    return {
-      url: verifyBody.url ?? token.publicUrl,
-      objectKey: verifyBody.objectKey ?? token.objectKey,
-    };
   }
 
-  return {
-    url: token.publicUrl,
-    objectKey: token.objectKey,
-  };
+  throw new Error("上传失败。");
 }

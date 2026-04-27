@@ -10,6 +10,8 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
+    "inline": "npm run lint",
+    "node_lint": "npm run lint",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio"

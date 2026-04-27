@@ -1,6 +1,7 @@
 import { BackendStatusPanel } from "@/components/backend-status-panel";
 import { ComposeCard } from "@/components/compose-card";
-import { PostCard } from "@/components/post-card";
+import { FeedList } from "@/components/feed-list";
+import { GrowthPanel } from "@/components/growth-panel";
 import { ProfileSummaryCard } from "@/components/profile-summary-card";
 import { DesktopNav, MobileNav, SiteHeader } from "@/components/site-shell";
 import { getBackendStatus } from "@/lib/backend-status";
@@ -46,16 +47,15 @@ export default async function Home() {
           <BackendStatusPanel status={backendStatus} />
           <ComposeCard disabledReason={composeDisabledReason} />
 
-          <div className="space-y-5">
-            {posts.map((post, index) => (
-              <PostCard key={post.id} post={post} priority={index === 0} />
-            ))}
-          </div>
+          <FeedList key={posts[0]?.id ?? "feed"} posts={posts} />
         </main>
-        <ProfileSummaryCard
-          profile={profile}
-          editable={Boolean(currentProfile)}
-        />
+        <aside className="space-y-5">
+          <ProfileSummaryCard
+            profile={profile}
+            editable={Boolean(currentProfile)}
+          />
+          <GrowthPanel posts={posts} />
+        </aside>
       </div>
       <MobileNav />
     </div>
