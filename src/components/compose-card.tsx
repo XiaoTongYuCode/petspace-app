@@ -15,6 +15,11 @@ type ComposeAutosave = {
   location: string;
 };
 
+type ReverseGeocodeResult = {
+  location?: string;
+  error?: string;
+};
+
 const DRAFT_STORAGE_KEY = "petspace-compose-autosave-v2";
 
 function getStoredAutosave(): ComposeAutosave | null {
@@ -38,6 +43,29 @@ function getStoredAutosave(): ComposeAutosave | null {
   } catch {
     return null;
   }
+}
+
+async function getCityLocation(latitude: number, longitude: number) {
+  const response = await fetch("/api/location/reverse-geocode", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ latitude, longitude }),
+  });
+  const body = (await response.json().catch(() => null)) as
+    | ReverseGeocodeResult
+    | null;
+
+  if (!response.ok) {
+    throw new Error(body?.error ?? "已获取定位，但暂时无法识别城市。");
+  }
+
+  if (typeof body?.location !== "string" || !body.location.trim()) {
+    throw new Error("已获取定位，但暂时无法识别城市。");
+  }
+
+  return body.location.trim();
 }
 
 export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
@@ -126,27 +154,38 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
 
     setIsLocating(true);
     navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
-        setLocation(
-          `当前位置 ${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`,
-        );
-        setIsLocating(false);
+      async ({ coords }) => {
+        try {
+          const cityLocation = await getCityLocation(
+            coords.latitude,
+            coords.longitude,
+          );
+          setLocation(cityLocation);
+        } catch (caught) {
+          setError(
+            caught instanceof Error
+              ? caught.message
+              : "已获取定位，但暂时无法识别城市。",
+          );
+        } finally {
+          setIsLocating(false);
+        }
       },
       (positionError) => {
         setIsLocating(false);
 
         if (positionError.code === positionError.PERMISSION_DENIED) {
-          setError("需要允许浏览器定位权限后才能获取位置。");
+          setError("需要允许浏览器定位权限后才能获取城市。");
           return;
         }
 
         setError(
           positionError.code === positionError.TIMEOUT
-            ? "定位超时，请稍后再试。"
-            : "暂时无法获取定位。",
+            ? "城市定位超时，请稍后再试。"
+            : "暂时无法获取城市定位。",
         );
       },
-      { enableHighAccuracy: true, maximumAge: 60000, timeout: 10000 },
+      { enableHighAccuracy: false, maximumAge: 300000, timeout: 10000 },
     );
   }
 
@@ -304,8 +343,8 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
             onClick={requestBrowserLocation}
             disabled={isDisabled || isLocating}
             data-testid="location-button"
-            aria-label={location ? `已获取定位：${location}` : "获取当前位置"}
-            title={location ? `已获取定位：${location}` : "获取当前位置"}
+            aria-label={location ? `已获取城市：${location}` : "获取城市定位"}
+            title={location ? `已获取城市：${location}` : "获取城市定位"}
             className={`inline-flex h-9 min-w-9 items-center justify-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${
               location && !isLocating
                 ? "gap-1.5 text-[#c44f35]"
@@ -318,8 +357,11 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
               <MapPin className="h-5 w-5" />
             )}
             {location && !isLocating ? (
-              <span data-testid="location-label" className="text-xs font-bold">
-                定位
+              <span
+                data-testid="location-label"
+                className="max-w-32 truncate text-xs font-bold sm:max-w-48"
+              >
+                {location}
               </span>
             ) : null}
           </button>
