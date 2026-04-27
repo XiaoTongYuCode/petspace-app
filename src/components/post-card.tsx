@@ -22,75 +22,153 @@ export function PostCard({ post, priority = false }: PostCardProps) {
   const [viewsCount, setViewsCount] = useState(post.viewsCount);
   const [feedback, setFeedback] = useState<string | null>(null);
   const viewedRef = useRef(false);
+  const articleRef = useRef<HTMLElement>(null);
+  const [likePending, setLikePending] = useState(false);
+  const [favoritePending, setFavoritePending] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   useEffect(() => {
     if (viewedRef.current || isSample) {
       return;
     }
 
-    viewedRef.current = true;
-    fetch(`/api/posts/${post.id}/view`, { method: "POST" })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((body: { count?: number } | null) => {
-        if (typeof body?.count === "number") {
-          setViewsCount(body.count);
+    const node = articleRef.current;
+    if (!node) {
+      return;
+    }
+
+    const abortController = new AbortController();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (!entry?.isIntersecting || viewedRef.current) {
+          return;
         }
-      })
-      .catch(() => undefined);
+
+        viewedRef.current = true;
+        observer.disconnect();
+        fetch(`/api/posts/${post.id}/view`, {
+          method: "POST",
+          signal: abortController.signal,
+        })
+          .then((response) => (response.ok ? response.json() : null))
+          .then((body: { count?: number } | null) => {
+            if (typeof body?.count === "number") {
+              setViewsCount(body.count);
+            }
+          })
+          .catch(() => undefined);
+      },
+      { rootMargin: "200px 0px", threshold: 0.2 },
+    );
+
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+      abortController.abort();
+    };
   }, [isSample, post.id]);
 
   async function toggleLike() {
+    if (likePending) {
+      return;
+    }
     setFeedback(null);
+    setLikePending(true);
 
     if (isSample) {
       setLiked((current) => !current);
-      setLikesCount((current) => current + (liked ? -1 : 1));
+      setLikesCount((current) =>
+        Math.max(0, current + (liked ? -1 : 1)),
+      );
+      setLikePending(false);
       return;
     }
 
-    const response = await fetch(`/api/posts/${post.id}/like`, { method: "POST" });
-    const body = (await response.json().catch(() => null)) as
-      | { liked?: boolean; count?: number; error?: string }
-      | null;
+    const previousLiked = liked;
+    const previousCount = likesCount;
+    const nextLiked = !liked;
+    const optimisticCount = Math.max(0, likesCount + (nextLiked ? 1 : -1));
 
-    if (!response.ok) {
-      setFeedback(body?.error ?? "点赞失败。");
-      return;
+    setLiked(nextLiked);
+    setLikesCount(optimisticCount);
+
+    try {
+      const response = await fetch(`/api/posts/${post.id}/like`, {
+        method: "POST",
+      });
+      const body = (await response.json().catch(() => null)) as
+        | { liked?: boolean; count?: number; error?: string }
+        | null;
+
+      if (!response.ok) {
+        setLiked(previousLiked);
+        setLikesCount(previousCount);
+        setFeedback(body?.error ?? "点赞失败。");
+        return;
+      }
+
+      setLiked(Boolean(body?.liked));
+      setLikesCount(body?.count ?? optimisticCount);
+    } finally {
+      setLikePending(false);
     }
-
-    setLiked(Boolean(body?.liked));
-    setLikesCount(body?.count ?? likesCount);
   }
 
   async function toggleFavorite() {
+    if (favoritePending) {
+      return;
+    }
     setFeedback(null);
+    setFavoritePending(true);
 
     if (isSample) {
       setFavorited((current) => !current);
-      setFavoritesCount((current) => current + (favorited ? -1 : 1));
+      setFavoritesCount((current) =>
+        Math.max(0, current + (favorited ? -1 : 1)),
+      );
+      setFavoritePending(false);
       return;
     }
 
-    const response = await fetch(`/api/posts/${post.id}/favorite`, {
-      method: "POST",
-    });
-    const body = (await response.json().catch(() => null)) as
-      | { favorited?: boolean; count?: number; error?: string }
-      | null;
+    const previousFavorited = favorited;
+    const previousCount = favoritesCount;
+    const nextFavorited = !favorited;
+    const optimisticCount = Math.max(
+      0,
+      favoritesCount + (nextFavorited ? 1 : -1),
+    );
 
-    if (!response.ok) {
-      setFeedback(body?.error ?? "收藏失败。");
-      return;
+    setFavorited(nextFavorited);
+    setFavoritesCount(optimisticCount);
+
+    try {
+      const response = await fetch(`/api/posts/${post.id}/favorite`, {
+        method: "POST",
+      });
+      const body = (await response.json().catch(() => null)) as
+        | { favorited?: boolean; count?: number; error?: string }
+        | null;
+
+      if (!response.ok) {
+        setFavorited(previousFavorited);
+        setFavoritesCount(previousCount);
+        setFeedback(body?.error ?? "收藏失败。");
+        return;
+      }
+
+      setFavorited(Boolean(body?.favorited));
+      setFavoritesCount(body?.count ?? optimisticCount);
+    } finally {
+      setFavoritePending(false);
     }
-
-    setFavorited(Boolean(body?.favorited));
-    setFavoritesCount(body?.count ?? favoritesCount);
   }
 
   return (
     <article
+      ref={articleRef}
       data-testid={`post-card-${post.id}`}
-      className="overflow-hidden rounded-lg bg-white/72 shadow-sm ring-1 ring-black/10"
+      className="overflow-hidden rounded-lg bg-white/72 shadow-sm ring-1 ring-black/10 [content-visibility:auto]"
     >
       <div className="flex items-start justify-between gap-4 p-4 sm:p-5">
         <div className="flex min-w-0 items-center gap-3">
@@ -124,14 +202,21 @@ export function PostCard({ post, priority = false }: PostCardProps) {
       </p>
 
       <Link href={`/post/${post.id}`} className="block bg-[#efd7b5]">
-        <Image
-          src={post.imageUrl}
-          alt={post.caption}
-          width={1200}
-          height={560}
-          priority={priority}
-          className="aspect-[16/10] max-h-[420px] w-full object-cover transition duration-500 hover:scale-[1.015]"
-        />
+        <div className="relative">
+          {!imageLoaded ? (
+            <div className="absolute inset-0 animate-pulse bg-[#ead4b3]" aria-hidden="true" />
+          ) : null}
+          <Image
+            src={post.imageUrl}
+            alt={post.caption}
+            width={1200}
+            height={560}
+            priority={priority}
+            sizes="(max-width: 1024px) 100vw, 680px"
+            className="aspect-[16/10] max-h-[420px] w-full object-cover transition duration-500 hover:scale-[1.015]"
+            onLoad={() => setImageLoaded(true)}
+          />
+        </div>
       </Link>
 
       <div className="grid grid-cols-4 border-t border-black/10 text-[13px] font-semibold text-[#5a493b]">
@@ -140,8 +225,9 @@ export function PostCard({ post, priority = false }: PostCardProps) {
           onClick={toggleLike}
           data-testid={`like-${post.id}`}
           aria-label={liked ? "取消点赞" : "点赞"}
-          className="flex h-12 items-center justify-center gap-2 transition hover:bg-[#fff8ed]"
+          className="flex h-12 items-center justify-center gap-2 transition hover:bg-[#fff8ed] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e46645]/60 disabled:cursor-not-allowed disabled:opacity-60"
           aria-pressed={liked}
+          disabled={likePending}
         >
           <Heart
             className={`h-4 w-4 ${liked ? "fill-[#e46645] text-[#e46645]" : ""}`}
@@ -152,7 +238,7 @@ export function PostCard({ post, priority = false }: PostCardProps) {
           href={`/post/${post.id}#comments`}
           data-testid={`comments-${post.id}`}
           aria-label="查看评论"
-          className="flex h-12 items-center justify-center gap-2 transition hover:bg-[#fff8ed]"
+          className="flex h-12 items-center justify-center gap-2 transition hover:bg-[#fff8ed] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e46645]/60"
         >
           <MessageCircle className="h-4 w-4" />
           {compactNumber(post.commentsCount)}
@@ -166,8 +252,9 @@ export function PostCard({ post, priority = false }: PostCardProps) {
           onClick={toggleFavorite}
           data-testid={`favorite-${post.id}`}
           aria-label={favorited ? "取消收藏" : "收藏"}
-          className="flex h-12 items-center justify-center gap-2 transition hover:bg-[#fff8ed]"
+          className="flex h-12 items-center justify-center gap-2 transition hover:bg-[#fff8ed] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e46645]/60 disabled:cursor-not-allowed disabled:opacity-60"
           aria-pressed={favorited}
+          disabled={favoritePending}
         >
           <Bookmark
             className={`h-4 w-4 ${

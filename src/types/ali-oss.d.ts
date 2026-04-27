@@ -26,6 +26,13 @@ declare module "ali-oss" {
     constructor(options: OssClientOptions);
     head(name: string): Promise<unknown>;
     put(name: string, file: File | Blob): Promise<unknown>;
+    multipartUpload(
+      name: string,
+      file: File | Blob,
+      options?: {
+        progress?: (percentage: number, checkpoint?: unknown, res?: unknown) => void;
+      },
+    ): Promise<unknown>;
     static STS: {
       new (options: StsOptions): {
         assumeRole(
