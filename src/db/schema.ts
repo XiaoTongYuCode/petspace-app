@@ -1,8 +1,10 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
+  date,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -135,11 +137,48 @@ export const postComments = pgTable(
   ],
 );
 
+export const userCheckIns = pgTable(
+  "user_check_ins",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    scope: varchar("scope", { length: 64 }).default("daily").notNull(),
+    checkInDate: date("check_in_date", { mode: "string" }).notNull(),
+    timeZone: varchar("time_zone", { length: 64 })
+      .default("Asia/Hong_Kong")
+      .notNull(),
+    source: varchar("source", { length: 32 }).default("manual").notNull(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .default(sql`'{}'::jsonb`)
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("user_check_ins_user_scope_date_idx").on(
+      table.userId,
+      table.scope,
+      table.checkInDate,
+    ),
+    index("user_check_ins_user_scope_created_idx").on(
+      table.userId,
+      table.scope,
+      table.createdAt,
+    ),
+    index("user_check_ins_scope_date_idx").on(table.scope, table.checkInDate),
+  ],
+);
+
 export const usersRelations = relations(users, ({ many }) => ({
   posts: many(posts),
   likes: many(postLikes),
   favorites: many(postFavorites),
   comments: many(postComments),
+  checkIns: many(userCheckIns),
 }));
 
 export const postsRelations = relations(posts, ({ one, many }) => ({
@@ -169,5 +208,12 @@ export const postCommentsRelations = relations(postComments, ({ one, many }) => 
   }),
   replies: many(postComments, {
     relationName: "commentReplies",
+  }),
+}));
+
+export const userCheckInsRelations = relations(userCheckIns, ({ one }) => ({
+  user: one(users, {
+    fields: [userCheckIns.userId],
+    references: [users.id],
   }),
 }));

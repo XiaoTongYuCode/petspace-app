@@ -1,10 +1,5 @@
-import {
-  Bookmark,
-  Compass,
-  Home,
-  ImagePlus,
-  UserRound,
-} from "lucide-react";
+import type { ReactNode } from "react";
+import { Bookmark, Compass, Home, ImagePlus, UserRound } from "lucide-react";
 import Link from "next/link";
 import { AuthActions } from "@/components/auth-actions";
 import { Logo } from "@/components/logo";
@@ -19,8 +14,8 @@ const navItems = [
 
 export function SiteHeader() {
   return (
-    <header className="sticky top-0 z-40 border-b border-black/10 bg-[#fef5e7]/92 backdrop-blur-xl">
-      <div className="mx-auto flex h-[60px] max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-40 flex items-center h-[50px] border-b border-black/10 bg-[#fef5e7]/92 backdrop-blur-xl">
+      <div className="mx-auto flex h-[40px] w-full max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         <Logo />
         <AuthActions />
       </div>
@@ -28,9 +23,26 @@ export function SiteHeader() {
   );
 }
 
-export function DesktopNav() {
+type DesktopNavProps = {
+  sticky?: boolean;
+};
+
+export function DesktopSidebar({ children }: { children?: ReactNode }) {
   return (
-    <nav className="sticky top-[84px] hidden h-fit rounded-xl bg-white/70 p-1.5 shadow-sm ring-1 ring-black/10 lg:block">
+    <aside className="sticky top-[84px] hidden h-fit space-y-4 lg:block">
+      <DesktopNav sticky={false} />
+      {children}
+    </aside>
+  );
+}
+
+export function DesktopNav({ sticky = true }: DesktopNavProps) {
+  return (
+    <nav
+      className={`hidden h-fit rounded-xl bg-white/70 p-1.5 shadow-sm ring-1 ring-black/10 lg:block ${
+        sticky ? "sticky top-[84px]" : ""
+      }`}
+    >
       {navItems.map((item) => {
         const Icon = item.icon;
 

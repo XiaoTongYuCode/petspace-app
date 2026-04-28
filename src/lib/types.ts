@@ -47,3 +47,14 @@ export type ProfileSummary = {
   totalViews: number;
   createdAt: string;
 };
+
+export type CheckInStatus = {
+  authenticated: boolean;
+  databaseReady: boolean;
+  checkedInToday: boolean;
+  lastDate: string | null;
+  streak: number;
+  today: string;
+  scope: string;
+  timeZone: string;
+};

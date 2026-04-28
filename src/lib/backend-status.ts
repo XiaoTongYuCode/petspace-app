@@ -5,7 +5,7 @@ import {
   isDatabaseSchemaMissingError,
   isDatabaseUnavailableError,
 } from "@/db/errors";
-import { postComments, posts } from "@/db/schema";
+import { postComments, posts, userCheckIns } from "@/db/schema";
 import { hasClerkEnv, isClerkKeylessMode } from "@/lib/auth";
 import { hasOssEnv } from "@/lib/oss";
 
@@ -101,6 +101,7 @@ export async function getBackendStatus(options: { checkDatabase?: boolean } = {}
           await Promise.all([
             db.select({ id: posts.id }).from(posts).limit(1),
             db.select({ id: postComments.id }).from(postComments).limit(1),
+            db.select({ id: userCheckIns.id }).from(userCheckIns).limit(1),
           ]);
           databaseSchemaReady = true;
         } catch (error) {

@@ -2,7 +2,12 @@ import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import { getClerkSessionClaims, getClerkUser, getClerkUserId } from "@/lib/auth";
 import { normalizeHandle } from "@/lib/format";
 import { samplePosts, sampleProfile } from "@/lib/sample-data";
-import type { FeedPost, PostComment, ProfileSummary } from "@/lib/types";
+import type {
+  CheckInStatus,
+  FeedPost,
+  PostComment,
+  ProfileSummary,
+} from "@/lib/types";
 import { getDbOrNull } from "@/db";
 import { isDatabaseReadFallbackError } from "@/db/errors";
 import {
@@ -11,6 +16,7 @@ import {
   postLikes,
   posts,
   postViews,
+  userCheckIns,
   users,
 } from "@/db/schema";
 
@@ -40,6 +46,11 @@ type ProfileUpdateInput = {
 
 type AppUser = typeof users.$inferSelect;
 
+type CheckInOptions = {
+  scope?: string | null;
+  timeZone?: string | null;
+};
+
 type ClerkUserSnapshot = {
   email?: string | null;
   firstName?: string | null;
@@ -51,6 +62,96 @@ type ClerkUserSnapshot = {
 
 function toIso(value: Date | string) {
   return new Date(value).toISOString();
+}
+
+const DEFAULT_CHECK_IN_SCOPE = "daily";
+const DEFAULT_CHECK_IN_TIME_ZONE = "Asia/Hong_Kong";
+const MAX_CHECK_IN_LOOKBACK_DAYS = 370;
+
+function normalizeCheckInScope(scope?: string | null) {
+  const cleanScope = scope?.trim().toLowerCase() || DEFAULT_CHECK_IN_SCOPE;
+
+  if (!/^[a-z0-9:_-]{1,64}$/.test(cleanScope)) {
+    return DEFAULT_CHECK_IN_SCOPE;
+  }
+
+  return cleanScope;
+}
+
+function normalizeTimeZone(timeZone?: string | null) {
+  const cleanTimeZone = timeZone?.trim();
+
+  if (!cleanTimeZone || cleanTimeZone.length > 64) {
+    return DEFAULT_CHECK_IN_TIME_ZONE;
+  }
+
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone: cleanTimeZone }).format(new Date());
+    return cleanTimeZone;
+  } catch {
+    return DEFAULT_CHECK_IN_TIME_ZONE;
+  }
+}
+
+function getDateInTimeZone(timeZone: string, value = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone,
+    year: "numeric",
+  }).formatToParts(value);
+  const partMap = new Map(parts.map((part) => [part.type, part.value]));
+
+  return `${partMap.get("year")}-${partMap.get("month")}-${partMap.get("day")}`;
+}
+
+function addDays(dateString: string, days: number) {
+  const [year, month, day] = dateString.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+
+  return date.toISOString().slice(0, 10);
+}
+
+function getCurrentStreak(checkInDates: string[], today: string) {
+  const dateSet = new Set(checkInDates);
+  const startDate = dateSet.has(today)
+    ? today
+    : dateSet.has(addDays(today, -1))
+      ? addDays(today, -1)
+      : null;
+
+  if (!startDate) {
+    return 0;
+  }
+
+  let streak = 0;
+  let cursor = startDate;
+
+  while (dateSet.has(cursor)) {
+    streak += 1;
+    cursor = addDays(cursor, -1);
+  }
+
+  return streak;
+}
+
+function createEmptyCheckInStatus(options: {
+  authenticated: boolean;
+  databaseReady: boolean;
+  scope: string;
+  timeZone: string;
+  today: string;
+}): CheckInStatus {
+  return {
+    authenticated: options.authenticated,
+    databaseReady: options.databaseReady,
+    checkedInToday: false,
+    lastDate: null,
+    scope: options.scope,
+    streak: 0,
+    timeZone: options.timeZone,
+    today: options.today,
+  };
 }
 
 function mapPostRow(row: {
@@ -305,9 +406,20 @@ export async function ensureCurrentUser(): Promise<AppUser | null> {
         avatarUrl: clerkUser?.imageUrl ?? null,
         bio: "正在 Petspace 分享宠物日常。",
       })
+      .onConflictDoNothing()
       .returning();
 
-    return created ?? null;
+    if (created) {
+      return created;
+    }
+
+    const [existingAfterConflict] = await db
+      .select()
+      .from(users)
+      .where(eq(users.clerkUserId, clerkUserId))
+      .limit(1);
+
+    return existingAfterConflict ?? null;
   } catch {
     return null;
   }
@@ -540,6 +652,110 @@ export async function getCurrentUserProfile(): Promise<ProfileSummary | null> {
   }
 
   return getProfileSummary(user);
+}
+
+export async function getCurrentUserCheckInStatus(
+  options: CheckInOptions = {},
+): Promise<CheckInStatus> {
+  const timeZone = normalizeTimeZone(options.timeZone);
+  const scope = normalizeCheckInScope(options.scope);
+  const today = getDateInTimeZone(timeZone);
+  const db = getDbOrNull();
+  const clerkUserId = await getClerkUserId();
+
+  if (!db) {
+    return createEmptyCheckInStatus({
+      authenticated: Boolean(clerkUserId),
+      databaseReady: false,
+      scope,
+      timeZone,
+      today,
+    });
+  }
+
+  if (!clerkUserId) {
+    return createEmptyCheckInStatus({
+      authenticated: false,
+      databaseReady: true,
+      scope,
+      timeZone,
+      today,
+    });
+  }
+
+  const user = await ensureCurrentUser();
+
+  if (!user) {
+    return createEmptyCheckInStatus({
+      authenticated: true,
+      databaseReady: false,
+      scope,
+      timeZone,
+      today,
+    });
+  }
+
+  try {
+    const rows = await db
+      .select({ checkInDate: userCheckIns.checkInDate })
+      .from(userCheckIns)
+      .where(and(eq(userCheckIns.userId, user.id), eq(userCheckIns.scope, scope)))
+      .orderBy(desc(userCheckIns.checkInDate))
+      .limit(MAX_CHECK_IN_LOOKBACK_DAYS);
+    const dates = rows.map((row) => row.checkInDate);
+
+    return {
+      authenticated: true,
+      databaseReady: true,
+      checkedInToday: dates.includes(today),
+      lastDate: dates[0] ?? null,
+      scope,
+      streak: getCurrentStreak(dates, today),
+      timeZone,
+      today,
+    };
+  } catch (error) {
+    if (isDatabaseReadFallbackError(error)) {
+      return createEmptyCheckInStatus({
+        authenticated: true,
+        databaseReady: false,
+        scope,
+        timeZone,
+        today,
+      });
+    }
+
+    throw error;
+  }
+}
+
+export async function recordCurrentUserCheckIn(options: CheckInOptions = {}) {
+  const timeZone = normalizeTimeZone(options.timeZone);
+  const scope = normalizeCheckInScope(options.scope);
+  const checkInDate = getDateInTimeZone(timeZone);
+  const db = getDbOrNull();
+
+  if (!db) {
+    throw new Error("请先配置数据库后再打卡。");
+  }
+
+  const user = await ensureCurrentUser();
+
+  if (!user) {
+    throw new Error("请先登录后再打卡。");
+  }
+
+  await db
+    .insert(userCheckIns)
+    .values({
+      checkInDate,
+      scope,
+      timeZone,
+      userId: user.id,
+    })
+    .onConflictDoNothing();
+
+  return getCurrentUserCheckInStatus({ scope, timeZone });
 }
 
 export async function getProfileByHandle(handle: string) {

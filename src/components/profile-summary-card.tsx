@@ -9,11 +9,13 @@ import type { ProfileSummary } from "@/lib/types";
 type ProfileSummaryCardProps = {
   profile: ProfileSummary;
   editable?: boolean;
+  sticky?: boolean;
 };
 
 export function ProfileSummaryCard({
   profile,
   editable = false,
+  sticky = true,
 }: ProfileSummaryCardProps) {
   const coverUrl = profile.coverUrl ?? DEFAULT_PROFILE_COVER_URL;
   const stats = [
@@ -23,7 +25,11 @@ export function ProfileSummaryCard({
   ];
 
   return (
-    <aside className="sticky top-[84px] hidden h-fit overflow-hidden rounded-lg bg-white/60 ring-1 ring-black/10 xl:block">
+    <aside
+      className={`hidden h-fit overflow-hidden rounded-lg bg-white/60 ring-1 ring-black/10 xl:block ${
+        sticky ? "sticky top-[84px]" : ""
+      }`}
+    >
       <div className="relative h-28 bg-[#eecf9d]">
         <Image
           src={coverUrl}
