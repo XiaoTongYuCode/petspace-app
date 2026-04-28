@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export default async function MePage() {
   const [backendStatus, profile] = await Promise.all([
-    getBackendStatus({ checkDatabase: true }),
+    getBackendStatus(),
     getCurrentUserProfile(),
   ]);
   const posts = profile ? await getPostsByAuthorId(profile.id) : [];

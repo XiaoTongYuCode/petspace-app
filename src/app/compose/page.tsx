@@ -3,10 +3,8 @@ import { ComposeCard } from "@/components/compose-card";
 import { DesktopNav, MobileNav, SiteHeader } from "@/components/site-shell";
 import { getBackendStatus } from "@/lib/backend-status";
 
-export const dynamic = "force-dynamic";
-
 export default async function ComposePage() {
-  const backendStatus = await getBackendStatus({ checkDatabase: true });
+  const backendStatus = await getBackendStatus();
   const composeDisabledReason = backendStatus.ready
     ? null
     : "发布功能暂时还在准备中，可以先浏览演示动态。";

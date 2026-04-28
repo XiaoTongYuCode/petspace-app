@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import { getClerkSessionClaims, getClerkUser, getClerkUserId } from "@/lib/auth";
 import { normalizeHandle } from "@/lib/format";
+import { dataCache } from "@/lib/memory-cache";
 import { samplePosts, sampleProfile } from "@/lib/sample-data";
 import type {
   CheckInStatus,
@@ -67,6 +68,65 @@ function toIso(value: Date | string) {
 const DEFAULT_CHECK_IN_SCOPE = "daily";
 const DEFAULT_CHECK_IN_TIME_ZONE = "Asia/Hong_Kong";
 const MAX_CHECK_IN_LOOKBACK_DAYS = 370;
+const ANONYMOUS_VIEWER_KEY = "anonymous";
+const CACHE_TAGS = {
+  checkIns: "check-ins",
+  posts: "posts",
+  profiles: "profiles",
+  users: "users",
+} as const;
+
+function cacheKey(...parts: Array<number | string | null | undefined>) {
+  return parts.map((part) => encodeURIComponent(String(part ?? ""))).join(":");
+}
+
+function viewerTag(viewerId: string | null | undefined) {
+  return `viewer:${viewerId ?? ANONYMOUS_VIEWER_KEY}`;
+}
+
+function postTag(postId: string) {
+  return `post:${postId}`;
+}
+
+function postCommentsTag(postId: string) {
+  return `post-comments:${postId}`;
+}
+
+function authorPostsTag(authorId: string) {
+  return `author-posts:${authorId}`;
+}
+
+function profileTag(userId: string) {
+  return `profile:${userId}`;
+}
+
+function profileHandleTag(handle: string) {
+  return `profile-handle:${normalizeHandle(handle)}`;
+}
+
+function checkInsTag(userId: string) {
+  return `check-ins:${userId}`;
+}
+
+function invalidatePostCaches(postId?: string | null) {
+  dataCache.invalidateTags([
+    CACHE_TAGS.posts,
+    CACHE_TAGS.profiles,
+    ...(postId ? [postTag(postId), postCommentsTag(postId)] : []),
+  ]);
+}
+
+function invalidateUserCaches(user: AppUser) {
+  dataCache.invalidateTags([
+    CACHE_TAGS.profiles,
+    CACHE_TAGS.users,
+    authorPostsTag(user.id),
+    profileTag(user.id),
+    profileHandleTag(user.handle),
+    viewerTag(user.id),
+    `viewer-clerk:${user.clerkUserId}`,
+  ]);
+}
 
 function normalizeCheckInScope(scope?: string | null) {
   const cleanScope = scope?.trim().toLowerCase() || DEFAULT_CHECK_IN_SCOPE;
@@ -254,13 +314,15 @@ async function getViewer() {
     return null;
   }
 
+  const key = cacheKey("viewer", clerkUserId);
+
   const db = getDbOrNull();
 
   if (!db) {
     return null;
   }
 
-  try {
+  return dataCache.getOrSet<AppUser | null>(key, async () => {
     const [viewer] = await db
       .select()
       .from(users)
@@ -268,9 +330,7 @@ async function getViewer() {
       .limit(1);
 
     return viewer ?? null;
-  } catch {
-    return null;
-  }
+  }, { tags: [CACHE_TAGS.users, `viewer-clerk:${clerkUserId}`] }).catch(() => null);
 }
 
 async function makeUniqueHandle(base: string, currentClerkUserId: string) {
@@ -367,6 +427,12 @@ export async function ensureCurrentUser(): Promise<AppUser | null> {
     return null;
   }
 
+  const cachedUser = dataCache.get<AppUser | null>(cacheKey("viewer", clerkUserId));
+
+  if (cachedUser) {
+    return cachedUser;
+  }
+
   const db = getDbOrNull();
 
   if (!db) {
@@ -381,6 +447,9 @@ export async function ensureCurrentUser(): Promise<AppUser | null> {
       .limit(1);
 
     if (existing) {
+      dataCache.set(cacheKey("viewer", clerkUserId), existing, {
+        tags: [CACHE_TAGS.users, `viewer-clerk:${clerkUserId}`],
+      });
       return existing;
     }
 
@@ -410,6 +479,7 @@ export async function ensureCurrentUser(): Promise<AppUser | null> {
       .returning();
 
     if (created) {
+      invalidateUserCaches(created);
       return created;
     }
 
@@ -418,6 +488,10 @@ export async function ensureCurrentUser(): Promise<AppUser | null> {
       .from(users)
       .where(eq(users.clerkUserId, clerkUserId))
       .limit(1);
+
+    if (existingAfterConflict) {
+      invalidateUserCaches(existingAfterConflict);
+    }
 
     return existingAfterConflict ?? null;
   } catch {
@@ -435,37 +509,44 @@ export async function getFeedPosts(limit = 20): Promise<FeedPost[]> {
   try {
     const viewer = await getViewer();
     const viewerId = viewer?.id;
+    const key = cacheKey("feed-posts", limit, viewerId ?? ANONYMOUS_VIEWER_KEY);
 
-    const rows = await db
-      .select({
-        postId: posts.id,
-        caption: posts.caption,
-        imageUrl: posts.imageUrl,
-        imageObjectKey: posts.imageObjectKey,
-        category: posts.category,
-        location: posts.location,
-        viewsCount: posts.viewsCount,
-        likesCount: posts.likesCount,
-        favoritesCount: posts.favoritesCount,
-        commentsCount: sql<number>`(select count(*)::int from ${postComments} where ${postComments.postId} = ${posts.id})`,
-        createdAt: posts.createdAt,
-        authorId: users.id,
-        authorHandle: users.handle,
-        authorDisplayName: users.displayName,
-        authorAvatarUrl: users.avatarUrl,
-        viewerHasLiked: viewerId
-          ? sql<boolean>`exists(select 1 from ${postLikes} where ${postLikes.postId} = ${posts.id} and ${postLikes.userId} = ${viewerId})`
-          : sql<boolean>`false`,
-        viewerHasFavorited: viewerId
-          ? sql<boolean>`exists(select 1 from ${postFavorites} where ${postFavorites.postId} = ${posts.id} and ${postFavorites.userId} = ${viewerId})`
-          : sql<boolean>`false`,
-      })
-      .from(posts)
-      .innerJoin(users, eq(posts.authorId, users.id))
-      .orderBy(desc(posts.createdAt))
-      .limit(limit);
+    return await dataCache.getOrSet(
+      key,
+      async () => {
+        const rows = await db
+          .select({
+            postId: posts.id,
+            caption: posts.caption,
+            imageUrl: posts.imageUrl,
+            imageObjectKey: posts.imageObjectKey,
+            category: posts.category,
+            location: posts.location,
+            viewsCount: posts.viewsCount,
+            likesCount: posts.likesCount,
+            favoritesCount: posts.favoritesCount,
+            commentsCount: sql<number>`(select count(*)::int from ${postComments} where ${postComments.postId} = ${posts.id})`,
+            createdAt: posts.createdAt,
+            authorId: users.id,
+            authorHandle: users.handle,
+            authorDisplayName: users.displayName,
+            authorAvatarUrl: users.avatarUrl,
+            viewerHasLiked: viewerId
+              ? sql<boolean>`exists(select 1 from ${postLikes} where ${postLikes.postId} = ${posts.id} and ${postLikes.userId} = ${viewerId})`
+              : sql<boolean>`false`,
+            viewerHasFavorited: viewerId
+              ? sql<boolean>`exists(select 1 from ${postFavorites} where ${postFavorites.postId} = ${posts.id} and ${postFavorites.userId} = ${viewerId})`
+              : sql<boolean>`false`,
+          })
+          .from(posts)
+          .innerJoin(users, eq(posts.authorId, users.id))
+          .orderBy(desc(posts.createdAt))
+          .limit(limit);
 
-    return rows.map(mapPostRow);
+        return rows.map(mapPostRow);
+      },
+      { tags: [CACHE_TAGS.posts, viewerTag(viewerId)] },
+    );
   } catch (error) {
     if (isDatabaseReadFallbackError(error)) {
       return samplePosts;
@@ -485,37 +566,44 @@ export async function getPostById(postId: string): Promise<FeedPost | null> {
   try {
     const viewer = await getViewer();
     const viewerId = viewer?.id;
+    const key = cacheKey("post", postId, viewerId ?? ANONYMOUS_VIEWER_KEY);
 
-    const [row] = await db
-      .select({
-        postId: posts.id,
-        caption: posts.caption,
-        imageUrl: posts.imageUrl,
-        imageObjectKey: posts.imageObjectKey,
-        category: posts.category,
-        location: posts.location,
-        viewsCount: posts.viewsCount,
-        likesCount: posts.likesCount,
-        favoritesCount: posts.favoritesCount,
-        commentsCount: sql<number>`(select count(*)::int from ${postComments} where ${postComments.postId} = ${posts.id})`,
-        createdAt: posts.createdAt,
-        authorId: users.id,
-        authorHandle: users.handle,
-        authorDisplayName: users.displayName,
-        authorAvatarUrl: users.avatarUrl,
-        viewerHasLiked: viewerId
-          ? sql<boolean>`exists(select 1 from ${postLikes} where ${postLikes.postId} = ${posts.id} and ${postLikes.userId} = ${viewerId})`
-          : sql<boolean>`false`,
-        viewerHasFavorited: viewerId
-          ? sql<boolean>`exists(select 1 from ${postFavorites} where ${postFavorites.postId} = ${posts.id} and ${postFavorites.userId} = ${viewerId})`
-          : sql<boolean>`false`,
-      })
-      .from(posts)
-      .innerJoin(users, eq(posts.authorId, users.id))
-      .where(eq(posts.id, postId))
-      .limit(1);
+    return await dataCache.getOrSet(
+      key,
+      async () => {
+        const [row] = await db
+          .select({
+            postId: posts.id,
+            caption: posts.caption,
+            imageUrl: posts.imageUrl,
+            imageObjectKey: posts.imageObjectKey,
+            category: posts.category,
+            location: posts.location,
+            viewsCount: posts.viewsCount,
+            likesCount: posts.likesCount,
+            favoritesCount: posts.favoritesCount,
+            commentsCount: sql<number>`(select count(*)::int from ${postComments} where ${postComments.postId} = ${posts.id})`,
+            createdAt: posts.createdAt,
+            authorId: users.id,
+            authorHandle: users.handle,
+            authorDisplayName: users.displayName,
+            authorAvatarUrl: users.avatarUrl,
+            viewerHasLiked: viewerId
+              ? sql<boolean>`exists(select 1 from ${postLikes} where ${postLikes.postId} = ${posts.id} and ${postLikes.userId} = ${viewerId})`
+              : sql<boolean>`false`,
+            viewerHasFavorited: viewerId
+              ? sql<boolean>`exists(select 1 from ${postFavorites} where ${postFavorites.postId} = ${posts.id} and ${postFavorites.userId} = ${viewerId})`
+              : sql<boolean>`false`,
+          })
+          .from(posts)
+          .innerJoin(users, eq(posts.authorId, users.id))
+          .where(eq(posts.id, postId))
+          .limit(1);
 
-    return row ? mapPostRow(row) : null;
+        return row ? mapPostRow(row) : null;
+      },
+      { tags: [CACHE_TAGS.posts, postTag(postId), viewerTag(viewerId)] },
+    );
   } catch {
     return samplePosts.find((post) => post.id === postId) ?? samplePosts[0] ?? null;
   }
@@ -528,25 +616,33 @@ export async function getPostComments(postId: string): Promise<PostComment[]> {
     return [];
   }
 
-  try {
-    const rows = await db
-      .select({
-        commentId: postComments.id,
-        postId: postComments.postId,
-        parentId: postComments.parentId,
-        body: postComments.body,
-        createdAt: postComments.createdAt,
-        authorId: users.id,
-        authorHandle: users.handle,
-        authorDisplayName: users.displayName,
-        authorAvatarUrl: users.avatarUrl,
-      })
-      .from(postComments)
-      .innerJoin(users, eq(postComments.authorId, users.id))
-      .where(eq(postComments.postId, postId))
-      .orderBy(asc(postComments.createdAt));
+  const key = cacheKey("post-comments", postId);
 
-    return buildCommentTree(rows.map(mapCommentRow));
+  try {
+    return await dataCache.getOrSet(
+      key,
+      async () => {
+        const rows = await db
+          .select({
+            commentId: postComments.id,
+            postId: postComments.postId,
+            parentId: postComments.parentId,
+            body: postComments.body,
+            createdAt: postComments.createdAt,
+            authorId: users.id,
+            authorHandle: users.handle,
+            authorDisplayName: users.displayName,
+            authorAvatarUrl: users.avatarUrl,
+          })
+          .from(postComments)
+          .innerJoin(users, eq(postComments.authorId, users.id))
+          .where(eq(postComments.postId, postId))
+          .orderBy(asc(postComments.createdAt));
+
+        return buildCommentTree(rows.map(mapCommentRow));
+      },
+      { tags: [postTag(postId), postCommentsTag(postId)] },
+    );
   } catch {
     return [];
   }
@@ -595,6 +691,8 @@ export async function createPostComment(input: CreateCommentInput) {
     body: body.slice(0, 500),
   });
 
+  invalidatePostCaches(input.postId);
+
   return getPostComments(input.postId);
 }
 
@@ -608,37 +706,54 @@ export async function getPostsByAuthorId(authorId: string): Promise<FeedPost[]> 
   try {
     const viewer = await getViewer();
     const viewerId = viewer?.id;
+    const key = cacheKey(
+      "author-posts",
+      authorId,
+      viewerId ?? ANONYMOUS_VIEWER_KEY,
+    );
 
-    const rows = await db
-      .select({
-        postId: posts.id,
-        caption: posts.caption,
-        imageUrl: posts.imageUrl,
-        imageObjectKey: posts.imageObjectKey,
-        category: posts.category,
-        location: posts.location,
-        viewsCount: posts.viewsCount,
-        likesCount: posts.likesCount,
-        favoritesCount: posts.favoritesCount,
-        commentsCount: sql<number>`(select count(*)::int from ${postComments} where ${postComments.postId} = ${posts.id})`,
-        createdAt: posts.createdAt,
-        authorId: users.id,
-        authorHandle: users.handle,
-        authorDisplayName: users.displayName,
-        authorAvatarUrl: users.avatarUrl,
-        viewerHasLiked: viewerId
-          ? sql<boolean>`exists(select 1 from ${postLikes} where ${postLikes.postId} = ${posts.id} and ${postLikes.userId} = ${viewerId})`
-          : sql<boolean>`false`,
-        viewerHasFavorited: viewerId
-          ? sql<boolean>`exists(select 1 from ${postFavorites} where ${postFavorites.postId} = ${posts.id} and ${postFavorites.userId} = ${viewerId})`
-          : sql<boolean>`false`,
-      })
-      .from(posts)
-      .innerJoin(users, eq(posts.authorId, users.id))
-      .where(eq(posts.authorId, authorId))
-      .orderBy(desc(posts.createdAt));
+    return await dataCache.getOrSet(
+      key,
+      async () => {
+        const rows = await db
+          .select({
+            postId: posts.id,
+            caption: posts.caption,
+            imageUrl: posts.imageUrl,
+            imageObjectKey: posts.imageObjectKey,
+            category: posts.category,
+            location: posts.location,
+            viewsCount: posts.viewsCount,
+            likesCount: posts.likesCount,
+            favoritesCount: posts.favoritesCount,
+            commentsCount: sql<number>`(select count(*)::int from ${postComments} where ${postComments.postId} = ${posts.id})`,
+            createdAt: posts.createdAt,
+            authorId: users.id,
+            authorHandle: users.handle,
+            authorDisplayName: users.displayName,
+            authorAvatarUrl: users.avatarUrl,
+            viewerHasLiked: viewerId
+              ? sql<boolean>`exists(select 1 from ${postLikes} where ${postLikes.postId} = ${posts.id} and ${postLikes.userId} = ${viewerId})`
+              : sql<boolean>`false`,
+            viewerHasFavorited: viewerId
+              ? sql<boolean>`exists(select 1 from ${postFavorites} where ${postFavorites.postId} = ${posts.id} and ${postFavorites.userId} = ${viewerId})`
+              : sql<boolean>`false`,
+          })
+          .from(posts)
+          .innerJoin(users, eq(posts.authorId, users.id))
+          .where(eq(posts.authorId, authorId))
+          .orderBy(desc(posts.createdAt));
 
-    return rows.map(mapPostRow);
+        return rows.map(mapPostRow);
+      },
+      {
+        tags: [
+          CACHE_TAGS.posts,
+          authorPostsTag(authorId),
+          viewerTag(viewerId),
+        ],
+      },
+    );
   } catch {
     return samplePosts;
   }
@@ -651,7 +766,11 @@ export async function getCurrentUserProfile(): Promise<ProfileSummary | null> {
     return null;
   }
 
-  return getProfileSummary(user);
+  return dataCache.getOrSet(
+    cacheKey("current-profile", user.id),
+    () => getProfileSummary(user),
+    { tags: [CACHE_TAGS.profiles, profileTag(user.id), viewerTag(user.id)] },
+  );
 }
 
 export async function getCurrentUserCheckInStatus(
@@ -696,24 +815,30 @@ export async function getCurrentUserCheckInStatus(
   }
 
   try {
-    const rows = await db
-      .select({ checkInDate: userCheckIns.checkInDate })
-      .from(userCheckIns)
-      .where(and(eq(userCheckIns.userId, user.id), eq(userCheckIns.scope, scope)))
-      .orderBy(desc(userCheckIns.checkInDate))
-      .limit(MAX_CHECK_IN_LOOKBACK_DAYS);
-    const dates = rows.map((row) => row.checkInDate);
+    return await dataCache.getOrSet(
+      cacheKey("check-in-status", user.id, scope, timeZone, today),
+      async () => {
+        const rows = await db
+          .select({ checkInDate: userCheckIns.checkInDate })
+          .from(userCheckIns)
+          .where(and(eq(userCheckIns.userId, user.id), eq(userCheckIns.scope, scope)))
+          .orderBy(desc(userCheckIns.checkInDate))
+          .limit(MAX_CHECK_IN_LOOKBACK_DAYS);
+        const dates = rows.map((row) => row.checkInDate);
 
-    return {
-      authenticated: true,
-      databaseReady: true,
-      checkedInToday: dates.includes(today),
-      lastDate: dates[0] ?? null,
-      scope,
-      streak: getCurrentStreak(dates, today),
-      timeZone,
-      today,
-    };
+        return {
+          authenticated: true,
+          databaseReady: true,
+          checkedInToday: dates.includes(today),
+          lastDate: dates[0] ?? null,
+          scope,
+          streak: getCurrentStreak(dates, today),
+          timeZone,
+          today,
+        };
+      },
+      { tags: [CACHE_TAGS.checkIns, checkInsTag(user.id)] },
+    );
   } catch (error) {
     if (isDatabaseReadFallbackError(error)) {
       return createEmptyCheckInStatus({
@@ -755,12 +880,21 @@ export async function recordCurrentUserCheckIn(options: CheckInOptions = {}) {
     })
     .onConflictDoNothing();
 
+  dataCache.invalidateTags([CACHE_TAGS.checkIns, checkInsTag(user.id)]);
+
   return getCurrentUserCheckInStatus({ scope, timeZone });
 }
 
 export async function getProfileByHandle(handle: string) {
   const db = getDbOrNull();
   const cleanHandle = normalizeHandle(handle);
+  const viewer = await getViewer();
+  const viewerId = viewer?.id;
+  const key = cacheKey(
+    "profile-by-handle",
+    cleanHandle,
+    viewerId ?? ANONYMOUS_VIEWER_KEY,
+  );
 
   if (!db) {
     return {
@@ -770,29 +904,42 @@ export async function getProfileByHandle(handle: string) {
   }
 
   try {
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.handle, cleanHandle))
-      .limit(1);
+    return await dataCache.getOrSet(
+      key,
+      async () => {
+        const [user] = await db
+          .select()
+          .from(users)
+          .where(eq(users.handle, cleanHandle))
+          .limit(1);
 
-    if (!user) {
-      if (cleanHandle === "petspace") {
-        return {
-          profile: sampleProfile,
-          posts: samplePosts,
-        };
-      }
+        if (!user) {
+          if (cleanHandle === "petspace") {
+            return {
+              profile: sampleProfile,
+              posts: samplePosts,
+            };
+          }
 
-      return null;
-    }
+          return null;
+        }
 
-    const [profile, authoredPosts] = await Promise.all([
-      getProfileSummary(user),
-      getPostsByAuthorId(user.id),
-    ]);
+        const [profile, authoredPosts] = await Promise.all([
+          getProfileSummary(user),
+          getPostsByAuthorId(user.id),
+        ]);
 
-    return { profile, posts: authoredPosts };
+        return { profile, posts: authoredPosts };
+      },
+      {
+        tags: [
+          CACHE_TAGS.posts,
+          CACHE_TAGS.profiles,
+          profileHandleTag(cleanHandle),
+          viewerTag(viewerId),
+        ],
+      },
+    );
   } catch {
     return {
       profile: sampleProfile,
@@ -808,37 +955,50 @@ async function getProfileSummary(user: AppUser): Promise<ProfileSummary> {
     return sampleProfile;
   }
 
-  const [stats] = await db
-    .select({
-      postsCount: count(posts.id),
-      totalLikes: sql<number>`coalesce(sum(${posts.likesCount}), 0)::int`,
-      totalViews: sql<number>`coalesce(sum(${posts.viewsCount}), 0)::int`,
-    })
-    .from(posts)
-    .where(eq(posts.authorId, user.id))
-    .catch((error) => {
-      if (isDatabaseReadFallbackError(error)) {
-        return [];
-      }
+  return dataCache.getOrSet(
+    cacheKey("profile-summary", user.id),
+    async () => {
+      const [stats] = await db
+        .select({
+          postsCount: count(posts.id),
+          totalLikes: sql<number>`coalesce(sum(${posts.likesCount}), 0)::int`,
+          totalViews: sql<number>`coalesce(sum(${posts.viewsCount}), 0)::int`,
+        })
+        .from(posts)
+        .where(eq(posts.authorId, user.id))
+        .catch((error) => {
+          if (isDatabaseReadFallbackError(error)) {
+            return [];
+          }
 
-      throw error;
-    });
+          throw error;
+        });
 
-  return {
-    id: user.id,
-    handle: user.handle,
-    displayName: user.displayName,
-    bio: user.bio,
-    avatarUrl: user.avatarUrl,
-    avatarObjectKey: user.avatarObjectKey,
-    coverUrl: user.coverUrl,
-    coverObjectKey: user.coverObjectKey,
-    profileViews: user.profileViews,
-    postsCount: stats?.postsCount ?? 0,
-    totalLikes: stats?.totalLikes ?? 0,
-    totalViews: stats?.totalViews ?? 0,
-    createdAt: toIso(user.createdAt),
-  };
+      return {
+        id: user.id,
+        handle: user.handle,
+        displayName: user.displayName,
+        bio: user.bio,
+        avatarUrl: user.avatarUrl,
+        avatarObjectKey: user.avatarObjectKey,
+        coverUrl: user.coverUrl,
+        coverObjectKey: user.coverObjectKey,
+        profileViews: user.profileViews,
+        postsCount: stats?.postsCount ?? 0,
+        totalLikes: stats?.totalLikes ?? 0,
+        totalViews: stats?.totalViews ?? 0,
+        createdAt: toIso(user.createdAt),
+      };
+    },
+    {
+      tags: [
+        CACHE_TAGS.profiles,
+        authorPostsTag(user.id),
+        profileTag(user.id),
+        profileHandleTag(user.handle),
+      ],
+    },
+  );
 }
 
 export async function createPost(input: CreatePostInput) {
@@ -860,6 +1020,9 @@ export async function createPost(input: CreatePostInput) {
       location: input.location?.trim() || null,
     })
     .returning({ id: posts.id });
+
+  invalidatePostCaches(created?.id);
+  invalidateUserCaches(user);
 
   return created;
 }
@@ -894,6 +1057,10 @@ export async function togglePostLike(postId: string) {
       .select({ count: posts.likesCount })
       .from(posts)
       .where(eq(posts.id, postId));
+
+    invalidatePostCaches(postId);
+    dataCache.invalidateTag(viewerTag(user.id));
+
     return { liked: false, count: updated?.count ?? 0 };
   }
 
@@ -917,6 +1084,10 @@ export async function togglePostLike(postId: string) {
     .select({ count: posts.likesCount })
     .from(posts)
     .where(eq(posts.id, postId));
+
+  invalidatePostCaches(postId);
+  dataCache.invalidateTag(viewerTag(user.id));
+
   return { liked: true, count: updated?.count ?? 0 };
 }
 
@@ -950,6 +1121,10 @@ export async function togglePostFavorite(postId: string) {
       .select({ count: posts.favoritesCount })
       .from(posts)
       .where(eq(posts.id, postId));
+
+    invalidatePostCaches(postId);
+    dataCache.invalidateTag(viewerTag(user.id));
+
     return { favorited: false, count: updated?.count ?? 0 };
   }
 
@@ -973,6 +1148,10 @@ export async function togglePostFavorite(postId: string) {
     .select({ count: posts.favoritesCount })
     .from(posts)
     .where(eq(posts.id, postId));
+
+  invalidatePostCaches(postId);
+  dataCache.invalidateTag(viewerTag(user.id));
+
   return { favorited: true, count: updated?.count ?? 0 };
 }
 
@@ -1003,6 +1182,8 @@ export async function recordPostView(postId: string, viewerKey: string) {
           updatedAt: new Date(),
         })
         .where(eq(posts.id, postId));
+
+      invalidatePostCaches(postId);
     }
 
     const [updated] = await db
@@ -1075,6 +1256,12 @@ export async function updateCurrentProfile(input: ProfileUpdateInput) {
     .set(updates)
     .where(eq(users.id, user.id))
     .returning();
+
+  invalidateUserCaches(user);
+
+  if (updated) {
+    invalidateUserCaches(updated);
+  }
 
   return updated;
 }

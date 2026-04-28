@@ -17,7 +17,7 @@ import { samplePosts, sampleProfile } from "@/lib/sample-data";
 export const dynamic = "force-dynamic";
 
 const getHomeBackendStatus = cache(() =>
-  getBackendStatus({ checkDatabase: true }),
+  getBackendStatus(),
 );
 const getHomeFeedPosts = cache(() => getFeedPosts());
 const getHomeCurrentProfile = cache(() => getCurrentUserProfile());

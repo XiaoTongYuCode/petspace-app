@@ -7,6 +7,7 @@ import {
 } from "@/db/errors";
 import { postComments, posts, userCheckIns } from "@/db/schema";
 import { hasClerkEnv, isClerkKeylessMode } from "@/lib/auth";
+import { DEFAULT_CACHE_TTL_MS } from "@/lib/memory-cache";
 import { hasOssEnv } from "@/lib/oss";
 
 const REQUIRED_ENV = [
@@ -21,7 +22,7 @@ const REQUIRED_ENV = [
 
 type RequiredEnvName = (typeof REQUIRED_ENV)[number];
 
-const STATUS_CACHE_MS = 30_000;
+const STATUS_CACHE_MS = DEFAULT_CACHE_TTL_MS;
 
 let checkedStatusCache:
   | {
