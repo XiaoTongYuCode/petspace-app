@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
-import { ToastHost } from "@lobehub/ui/base-ui";
 import { Analytics } from "@vercel/analytics/next";
+import { LobeToastProvider } from "@/components/lobe-toast-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -28,7 +28,7 @@ export default function RootLayout({
           }}
         >
           {children}
-          <ToastHost position="top-right" />
+          <LobeToastProvider />
         </ClerkProvider>
         <Analytics />
       </body>
