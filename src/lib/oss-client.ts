@@ -11,6 +11,27 @@ type OssUploadResponse = {
   objectKey: string;
 };
 
+const MAX_UPLOAD_IMAGE_BYTES = 4 * 1024 * 1024;
+const MAX_UPLOAD_IMAGE_ERROR_TEXT = "图片不能超过 4MB。";
+
+class UploadRequestError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "UploadRequestError";
+    this.status = status;
+  }
+}
+
+function shouldRetryUpload(error: unknown) {
+  if (error instanceof UploadRequestError) {
+    return error.status >= 500;
+  }
+
+  return true;
+}
+
 export async function uploadImageToOss(
   file: File,
   purpose: "post" | "avatar" | "cover",
@@ -22,8 +43,8 @@ export async function uploadImageToOss(
     throw new Error("请选择图片文件。");
   }
 
-  if (file.size > 8 * 1024 * 1024) {
-    throw new Error("图片不能超过 8MB。");
+  if (file.size > MAX_UPLOAD_IMAGE_BYTES) {
+    throw new Error(MAX_UPLOAD_IMAGE_ERROR_TEXT);
   }
 
   const maxAttempts = Math.max(1, maxRetries + 1);
@@ -45,7 +66,10 @@ export async function uploadImageToOss(
         const body = (await uploadResponse.json().catch(() => null)) as
           | { error?: string }
           | null;
-        throw new Error(body?.error ?? "上传图片失败。");
+        throw new UploadRequestError(
+          body?.error ?? "上传图片失败。",
+          uploadResponse.status,
+        );
       }
 
       const uploaded = (await uploadResponse.json()) as OssUploadResponse;
@@ -53,7 +77,7 @@ export async function uploadImageToOss(
 
       return uploaded;
     } catch (error) {
-      if (attempt >= maxAttempts) {
+      if (!shouldRetryUpload(error) || attempt >= maxAttempts) {
         throw error;
       }
 

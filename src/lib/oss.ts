@@ -7,7 +7,10 @@ export type OssUploadResponse = {
   url: string;
 };
 
-export const MAX_UPLOAD_IMAGE_BYTES = 8 * 1024 * 1024;
+export const MAX_UPLOAD_IMAGE_BYTES = 4 * 1024 * 1024;
+export const MAX_UPLOAD_IMAGE_MB = MAX_UPLOAD_IMAGE_BYTES / (1024 * 1024);
+export const MAX_UPLOAD_IMAGE_LIMIT_TEXT = `${MAX_UPLOAD_IMAGE_MB}MB`;
+export const MAX_UPLOAD_IMAGE_ERROR_TEXT = `图片不能超过 ${MAX_UPLOAD_IMAGE_LIMIT_TEXT}。`;
 
 export function hasOssEnv() {
   return Boolean(
@@ -37,7 +40,7 @@ export function assertImageUpload(
   }
 
   if (typeof fileSize === "number" && fileSize > MAX_UPLOAD_IMAGE_BYTES) {
-    throw new Error("图片不能超过 8MB。");
+    throw new Error(MAX_UPLOAD_IMAGE_ERROR_TEXT);
   }
 }
 

@@ -62,3 +62,19 @@ test("uploadImageForUser uploads image through server-side OSS client", async (t
   assert.equal(result.objectKey, objectKey);
   assert.equal(result.url, `https://assets.example.test/${objectKey}`);
 });
+
+test("uploadImageForUser rejects files above the server upload limit", async () => {
+  const { uploadImageBufferForUser } = await import("./oss.ts");
+
+  await assert.rejects(
+    uploadImageBufferForUser({
+      purpose: "post",
+      clerkUserId: "user_123",
+      filename: "too-large.jpeg",
+      contentType: "image/jpeg",
+      fileSize: 4 * 1024 * 1024 + 1,
+      content: Buffer.from([1]),
+    }),
+    /图片不能超过 4MB/,
+  );
+});
