@@ -1,33 +1,32 @@
 import crypto from "node:crypto";
 
-type OssPurpose = "post" | "avatar" | "cover";
+export type OssPurpose = "post" | "avatar" | "cover";
 
-export type OssStsResponse = {
-  bucket: string;
-  region: string;
-  endpoint: string;
+export type OssUploadResponse = {
   objectKey: string;
-  publicUrl: string;
-  expiresAt: string;
-  credentials: {
-    accessKeyId: string;
-    accessKeySecret: string;
-    stsToken: string;
-  };
+  url: string;
 };
+
+export const MAX_UPLOAD_IMAGE_BYTES = 4 * 1024 * 1024;
+export const MAX_UPLOAD_IMAGE_MB = MAX_UPLOAD_IMAGE_BYTES / (1024 * 1024);
+export const MAX_UPLOAD_IMAGE_LIMIT_TEXT = `${MAX_UPLOAD_IMAGE_MB}MB`;
+export const MAX_UPLOAD_IMAGE_ERROR_TEXT = `图片不能超过 ${MAX_UPLOAD_IMAGE_LIMIT_TEXT}。`;
 
 export function hasOssEnv() {
   return Boolean(
     process.env.ALIYUN_ACCESS_KEY_ID &&
       process.env.ALIYUN_ACCESS_KEY_SECRET &&
-      process.env.ALIYUN_OSS_ROLE_ARN &&
       process.env.ALIYUN_OSS_BUCKET &&
       process.env.ALIYUN_OSS_REGION &&
       process.env.ALIYUN_OSS_ENDPOINT,
   );
 }
 
-export function assertImageUpload(contentType: string, filename: string) {
+export function assertImageUpload(
+  contentType: string,
+  filename: string,
+  fileSize?: number,
+) {
   const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
   if (!allowedTypes.includes(contentType)) {
@@ -38,6 +37,10 @@ export function assertImageUpload(contentType: string, filename: string) {
 
   if (!safeName || safeName.length > 160) {
     throw new Error("图片文件名无效。");
+  }
+
+  if (typeof fileSize === "number" && fileSize > MAX_UPLOAD_IMAGE_BYTES) {
+    throw new Error(MAX_UPLOAD_IMAGE_ERROR_TEXT);
   }
 }
 
@@ -63,29 +66,13 @@ export function createPublicUrl(objectKey: string) {
   return `https://${process.env.ALIYUN_OSS_BUCKET}.${endpoint}/${objectKey}`;
 }
 
-export function isAllowedObjectKey(
-  objectKey: string,
-  purpose: OssPurpose,
-  clerkUserId: string,
-) {
-  const prefix = `${purpose}/${clerkUserId}/`;
-
-  return (
-    objectKey.startsWith(prefix) &&
-    objectKey.length > prefix.length &&
-    objectKey.length <= 400 &&
-    !objectKey.includes("..") &&
-    !objectKey.includes("\\")
-  );
-}
-
-export async function objectExistsInOss(objectKey: string) {
+async function createOssClient() {
   if (!hasOssEnv()) {
     throw new Error("阿里云 OSS 环境变量未配置完整。");
   }
 
   const OSS = (await import("ali-oss")).default;
-  const client = new OSS({
+  return new OSS({
     accessKeyId: process.env.ALIYUN_ACCESS_KEY_ID!,
     accessKeySecret: process.env.ALIYUN_ACCESS_KEY_SECRET!,
     bucket: process.env.ALIYUN_OSS_BUCKET!,
@@ -93,63 +80,65 @@ export async function objectExistsInOss(objectKey: string) {
     region: process.env.ALIYUN_OSS_REGION!,
     secure: true,
   });
-
-  try {
-    await client.head(objectKey);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
-export async function createOssStsToken(params: {
-  purpose: OssPurpose;
-  clerkUserId: string;
-  filename: string;
+export async function uploadObjectToOss(params: {
+  objectKey: string;
+  content: Buffer;
   contentType: string;
-}): Promise<OssStsResponse> {
+}) {
   if (!hasOssEnv()) {
     throw new Error("阿里云 OSS 环境变量未配置完整。");
   }
 
-  assertImageUpload(params.contentType, params.filename);
-
-  const objectKey = createObjectKey(params.purpose, params.clerkUserId, params.filename);
-  const bucket = process.env.ALIYUN_OSS_BUCKET!;
-  const policy = {
-    Version: "1",
-    Statement: [
-      {
-        Effect: "Allow",
-        Action: ["oss:PutObject"],
-        Resource: [`acs:oss:*:*:${bucket}/${objectKey}`],
-      },
-    ],
-  };
-  const OSS = (await import("ali-oss")).default;
-  const sts = new OSS.STS({
-    accessKeyId: process.env.ALIYUN_ACCESS_KEY_ID!,
-    accessKeySecret: process.env.ALIYUN_ACCESS_KEY_SECRET!,
+  const client = await createOssClient();
+  await client.put(params.objectKey, params.content, {
+    mime: params.contentType,
+    headers: {
+      "Content-Type": params.contentType,
+    },
   });
-  const durationSeconds = 900;
-  const { credentials } = await sts.assumeRole(
-    process.env.ALIYUN_OSS_ROLE_ARN!,
-    policy,
-    durationSeconds,
-    `petspace-${params.purpose}`,
+}
+
+export async function uploadImageBufferForUser(params: {
+  purpose: OssPurpose;
+  clerkUserId: string;
+  filename: string;
+  contentType: string;
+  fileSize: number;
+  content: Buffer;
+}): Promise<OssUploadResponse> {
+  assertImageUpload(params.contentType, params.filename, params.fileSize);
+
+  const objectKey = createObjectKey(
+    params.purpose,
+    params.clerkUserId,
+    params.filename,
   );
 
-  return {
-    bucket,
-    region: process.env.ALIYUN_OSS_REGION!,
-    endpoint: process.env.ALIYUN_OSS_ENDPOINT!,
+  await uploadObjectToOss({
     objectKey,
-    publicUrl: createPublicUrl(objectKey),
-    expiresAt: credentials.Expiration,
-    credentials: {
-      accessKeyId: credentials.AccessKeyId,
-      accessKeySecret: credentials.AccessKeySecret,
-      stsToken: credentials.SecurityToken,
-    },
+    content: params.content,
+    contentType: params.contentType,
+  });
+
+  return {
+    objectKey,
+    url: createPublicUrl(objectKey),
   };
+}
+
+export async function uploadImageForUser(params: {
+  purpose: OssPurpose;
+  clerkUserId: string;
+  file: File;
+}): Promise<OssUploadResponse> {
+  return uploadImageBufferForUser({
+    purpose: params.purpose,
+    clerkUserId: params.clerkUserId,
+    filename: params.file.name,
+    contentType: params.file.type,
+    fileSize: params.file.size,
+    content: Buffer.from(await params.file.arrayBuffer()),
+  });
 }

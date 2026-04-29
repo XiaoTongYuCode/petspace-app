@@ -19,7 +19,8 @@ Copy `.env.example` to `.env.local` and fill:
 
 - `DATABASE_URL` for PostgreSQL.
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` for Clerk auth.
-- `ALIYUN_ACCESS_KEY_ID`, `ALIYUN_ACCESS_KEY_SECRET`, `ALIYUN_OSS_ROLE_ARN`, `ALIYUN_OSS_BUCKET`, `ALIYUN_OSS_REGION`, `ALIYUN_OSS_ENDPOINT`, and optionally `ALIYUN_OSS_PUBLIC_BASE_URL` for OSS browser uploads.
+- `ALIYUN_ACCESS_KEY_ID`, `ALIYUN_ACCESS_KEY_SECRET`, `ALIYUN_OSS_BUCKET`, `ALIYUN_OSS_REGION`, `ALIYUN_OSS_ENDPOINT`, and optionally `ALIYUN_OSS_PUBLIC_BASE_URL` for server-side OSS uploads.
+- The current server-proxy upload path accepts images up to `4MB` to stay within the active function-platform request size budget.
 
 Without those variables, the app renders a clearly marked preview feed and disables real publishing.
 
