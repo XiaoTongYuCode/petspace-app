@@ -4,7 +4,6 @@ const envLabels: Record<string, string> = {
   DATABASE_URL: "PostgreSQL DATABASE_URL",
   ALIYUN_ACCESS_KEY_ID: "阿里云 AccessKey ID",
   ALIYUN_ACCESS_KEY_SECRET: "阿里云 AccessKey Secret",
-  ALIYUN_OSS_ROLE_ARN: "阿里云 OSS RoleArn",
   ALIYUN_OSS_BUCKET: "阿里云 OSS Bucket",
   ALIYUN_OSS_REGION: "阿里云 OSS Region",
   ALIYUN_OSS_ENDPOINT: "阿里云 OSS Endpoint",

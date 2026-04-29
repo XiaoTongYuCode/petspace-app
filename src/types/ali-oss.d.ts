@@ -9,19 +9,6 @@ declare module "ali-oss" {
     secure?: boolean;
   };
 
-  type StsOptions = {
-    accessKeyId: string;
-    accessKeySecret: string;
-    endpoint?: string;
-  };
-
-  type StsCredentials = {
-    AccessKeyId: string;
-    AccessKeySecret: string;
-    SecurityToken: string;
-    Expiration: string;
-  };
-
   class Client {
     constructor(options: OssClientOptions);
     head(name: string): Promise<unknown>;
@@ -33,23 +20,6 @@ declare module "ali-oss" {
         headers?: Record<string, string>;
       },
     ): Promise<unknown>;
-    multipartUpload(
-      name: string,
-      file: File | Blob,
-      options?: {
-        progress?: (percentage: number, checkpoint?: unknown, res?: unknown) => void;
-      },
-    ): Promise<unknown>;
-    static STS: {
-      new (options: StsOptions): {
-        assumeRole(
-          role: string,
-          policy: object,
-          expiration: number,
-          session: string,
-        ): Promise<{ credentials: StsCredentials }>;
-      };
-    };
   }
 
   export default Client;

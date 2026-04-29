@@ -1,11 +1,14 @@
 "use client";
 
-import type { OssStsResponse } from "./oss";
-
 type UploadImageOptions = {
   maxRetries?: number;
   onProgress?: (percent: number) => void;
   onRetry?: (attempt: number, error: unknown) => void;
+};
+
+type OssUploadResponse = {
+  url: string;
+  objectKey: string;
 };
 
 export async function uploadImageToOss(
@@ -23,78 +26,33 @@ export async function uploadImageToOss(
     throw new Error("图片不能超过 8MB。");
   }
 
-  const tokenResponse = await fetch("/api/oss/sts", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      purpose,
-      filename: file.name,
-      contentType: file.type,
-    }),
-  });
-
-  if (!tokenResponse.ok) {
-    const body = (await tokenResponse.json().catch(() => null)) as
-      | { error?: string }
-      | null;
-    throw new Error(body?.error ?? "获取上传凭证失败。");
-  }
-
-  const token = (await tokenResponse.json()) as OssStsResponse;
-  const mod = await import("ali-oss/dist/aliyun-oss-sdk.min.js");
-  const OSS = mod.default;
-  const client = new OSS({
-    region: token.region,
-    endpoint: token.endpoint,
-    bucket: token.bucket,
-    accessKeyId: token.credentials.accessKeyId,
-    accessKeySecret: token.credentials.accessKeySecret,
-    stsToken: token.credentials.stsToken,
-    secure: true,
-  });
-
   const maxAttempts = Math.max(1, maxRetries + 1);
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      // Small images do not need multipart upload. Using a single PUT avoids
-      // the extra `POST ?uploads=` initialization request that can fail in the browser.
+      const formData = new FormData();
+      formData.set("purpose", purpose);
+      formData.set("file", file);
+
       onProgress?.(10);
-      await client.put(token.objectKey, file, {
-        mime: file.type,
-      });
 
-      onProgress?.(100);
-
-      return {
-        url: token.publicUrl,
-        objectKey: token.objectKey,
-      };
-    } catch (error) {
-      const verifyResponse = await fetch("/api/oss/verify", {
+      const uploadResponse = await fetch("/api/oss/upload", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          purpose,
-          objectKey: token.objectKey,
-        }),
+        body: formData,
       });
-      const verifyBody = (await verifyResponse.json().catch(() => null)) as
-        | { exists?: boolean; url?: string; objectKey?: string }
-        | null;
 
-      if (verifyResponse.ok && verifyBody?.exists) {
-        onProgress?.(100);
-        return {
-          url: verifyBody.url ?? token.publicUrl,
-          objectKey: verifyBody.objectKey ?? token.objectKey,
-        };
+      if (!uploadResponse.ok) {
+        const body = (await uploadResponse.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        throw new Error(body?.error ?? "上传图片失败。");
       }
 
+      const uploaded = (await uploadResponse.json()) as OssUploadResponse;
+      onProgress?.(100);
+
+      return uploaded;
+    } catch (error) {
       if (attempt >= maxAttempts) {
         throw error;
       }
