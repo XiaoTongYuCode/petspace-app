@@ -9,7 +9,7 @@ export function ClientLobeToastHost() {
       customTheme={{ neutralColor: "sand", primaryColor: "volcano" }}
       enableCustomFonts={false}
     >
-      <ToastHost position="top" />
+      <ToastHost className="petspace-toast-viewport" position="top" />
     </ThemeProvider>
   );
 }
