@@ -1,6 +1,6 @@
 "use client";
 
-import type { OssStsResponse } from "@/lib/oss";
+import type { OssStsResponse } from "./oss";
 
 type UploadImageOptions = {
   maxRetries?: number;
@@ -59,10 +59,11 @@ export async function uploadImageToOss(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      await client.multipartUpload(token.objectKey, file, {
-        progress(progressValue: number) {
-          onProgress?.(Math.min(100, Math.max(0, Math.round(progressValue * 100))));
-        },
+      // Small images do not need multipart upload. Using a single PUT avoids
+      // the extra `POST ?uploads=` initialization request that can fail in the browser.
+      onProgress?.(10);
+      await client.put(token.objectKey, file, {
+        mime: file.type,
       });
 
       onProgress?.(100);

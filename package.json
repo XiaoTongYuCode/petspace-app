@@ -10,6 +10,7 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
+    "test:oss-client": "node --test --experimental-test-module-mocks --experimental-strip-types src/lib/oss-client.test.ts",
     "inline": "npm run lint",
     "node_lint": "npm run lint",
     "db:generate": "drizzle-kit generate",

@@ -25,7 +25,14 @@ declare module "ali-oss" {
   class Client {
     constructor(options: OssClientOptions);
     head(name: string): Promise<unknown>;
-    put(name: string, file: File | Blob): Promise<unknown>;
+    put(
+      name: string,
+      file: File | Blob | Buffer,
+      options?: {
+        mime?: string;
+        headers?: Record<string, string>;
+      },
+    ): Promise<unknown>;
     multipartUpload(
       name: string,
       file: File | Blob,
