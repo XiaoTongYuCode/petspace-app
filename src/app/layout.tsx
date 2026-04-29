@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
+import { ToastHost } from "@lobehub/ui/base-ui";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
@@ -27,6 +28,7 @@ export default function RootLayout({
           }}
         >
           {children}
+          <ToastHost position="top-right" />
         </ClerkProvider>
         <Analytics />
       </body>

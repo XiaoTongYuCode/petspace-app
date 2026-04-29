@@ -1,5 +1,6 @@
 "use client";
 
+import { toast as Toast, type ToastInstance } from "@lobehub/ui/base-ui";
 import { ImagePlus, Loader2, MapPin, Send, X } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -75,15 +76,13 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
   const [location, setLocation] = useState(() => getStoredAutosave()?.location ?? "");
   const [challengeTag, setChallengeTag] = useState("#今日宠物微笑");
   const [file, setFile] = useState<File | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadRetryCount, setUploadRetryCount] = useState(0);
   const previewUrlRef = useRef<string | null>(null);
   const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const publishToastRef = useRef<ToastInstance | null>(null);
+  const disabledReasonToastRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
@@ -93,8 +92,21 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
       if (autoSaveTimeoutRef.current) {
         clearTimeout(autoSaveTimeoutRef.current);
       }
+      publishToastRef.current?.close();
     };
   }, []);
+
+  useEffect(() => {
+    if (!disabledReason || disabledReasonToastRef.current === disabledReason) {
+      return;
+    }
+
+    disabledReasonToastRef.current = disabledReason;
+    Toast.warning({
+      title: "暂时不能发布",
+      description: disabledReason,
+    });
+  }, [disabledReason]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -140,19 +152,61 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
     setPreviewUrl(objectUrl);
   }
 
+  function showPublishError(message: string) {
+    Toast.error({
+      title: "发布失败",
+      description: message,
+      actions: file
+        ? [
+            {
+              label: "重试发布",
+              onClick: () => {
+                void publishPost();
+              },
+            },
+          ]
+        : undefined,
+    });
+  }
+
+  function closePublishToast() {
+    publishToastRef.current?.close();
+    publishToastRef.current = null;
+  }
+
+  function showPublishingToast(description: string) {
+    if (publishToastRef.current) {
+      publishToastRef.current.update({
+        title: "发布中",
+        description,
+        type: "loading",
+      });
+      return;
+    }
+
+    publishToastRef.current = Toast.loading({
+      title: "发布中",
+      description,
+      closable: false,
+    });
+  }
+
   function requestBrowserLocation() {
     if (isDisabled || isLocating) {
       return;
     }
 
-    setError(null);
-
     if (!("geolocation" in navigator)) {
-      setError("当前浏览器不支持定位。");
+      Toast.warning("当前浏览器不支持定位。");
       return;
     }
 
     setIsLocating(true);
+    const locatingToast = Toast.loading({
+      title: "正在定位",
+      description: "正在获取城市信息。",
+      closable: false,
+    });
     navigator.geolocation.getCurrentPosition(
       async ({ coords }) => {
         try {
@@ -161,8 +215,14 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
             coords.longitude,
           );
           setLocation(cityLocation);
+          locatingToast.close();
+          Toast.success({
+            title: "城市已更新",
+            description: cityLocation,
+          });
         } catch (caught) {
-          setError(
+          locatingToast.close();
+          Toast.error(
             caught instanceof Error
               ? caught.message
               : "已获取定位，但暂时无法识别城市。",
@@ -173,13 +233,14 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
       },
       (positionError) => {
         setIsLocating(false);
+        locatingToast.close();
 
         if (positionError.code === positionError.PERMISSION_DENIED) {
-          setError("需要允许浏览器定位权限后才能获取城市。");
+          Toast.warning("需要允许浏览器定位权限后才能获取城市。");
           return;
         }
 
-        setError(
+        Toast.error(
           positionError.code === positionError.TIMEOUT
             ? "城市定位超时，请稍后再试。"
             : "暂时无法获取城市定位。",
@@ -195,37 +256,40 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
   }
 
   async function publishPost() {
-    setError(null);
-    setSuccess(null);
-    setUploadProgress(0);
-    setUploadRetryCount(0);
+    Toast.dismiss();
+    closePublishToast();
 
     if (disabledReason) {
-      setError(disabledReason);
+      Toast.warning({
+        title: "暂时不能发布",
+        description: disabledReason,
+      });
       return;
     }
 
     if (!caption.trim()) {
-      setError("写一点宠物今天的生活吧。");
+      Toast.warning("写一点宠物今天的生活吧。");
       return;
     }
 
     if (!file) {
-      setError("请选择一张图片。");
+      Toast.warning("请选择一张图片。");
       return;
     }
 
     setIsSubmitting(true);
+    showPublishingToast("正在上传图片 0%。");
 
     try {
       const upload = await uploadImageToOss(file, "post", {
         onProgress(percent) {
-          setUploadProgress(percent);
+          showPublishingToast(`正在上传图片 ${percent}%。`);
         },
         onRetry(attempt) {
-          setUploadRetryCount(attempt);
+          showPublishingToast(`上传重试中（第 ${attempt} 次），请稍候。`);
         },
       });
+      showPublishingToast("图片已上传，正在发布动态。");
       const response = await fetch("/api/posts", {
         method: "POST",
         headers: {
@@ -251,14 +315,15 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
       setLocation("");
       setChallengeTag("#今日宠物微笑");
       updateFile(null);
-      setUploadProgress(0);
-      setSuccess("动态已发布。");
+      closePublishToast();
+      Toast.success("动态已发布。");
       if (typeof window !== "undefined") {
         window.localStorage.removeItem(DRAFT_STORAGE_KEY);
       }
       router.refresh();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "发布失败。");
+      closePublishToast();
+      showPublishError(caught instanceof Error ? caught.message : "发布失败。");
     } finally {
       setIsSubmitting(false);
     }
@@ -379,41 +444,6 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
           发布
         </button>
       </div>
-
-      {isSubmitting ? (
-        <div className="mt-3">
-          <div className="flex items-center justify-between text-xs font-semibold text-[#7f654d]">
-            <span>上传进度</span>
-            <span>{uploadProgress}%</span>
-          </div>
-          <div className="mt-1 h-2 overflow-hidden rounded-full bg-[#f0e1cb]">
-            <div
-              className="h-full rounded-full bg-[#e46645] transition-all"
-              style={{ width: `${uploadProgress}%` }}
-            />
-          </div>
-          {uploadRetryCount > 0 ? (
-            <p className="mt-1 text-xs text-[#9a603f]">上传重试中（第 {uploadRetryCount} 次）…</p>
-          ) : null}
-        </div>
-      ) : null}
-
-      {disabledReason ? (
-        <p className="mt-3 text-sm font-medium text-[#8a5b2c]">{disabledReason}</p>
-      ) : null}
-      {error ? <p className="mt-3 text-sm font-medium text-[#b23b2b]">{error}</p> : null}
-      {error && file && !isSubmitting ? (
-        <button
-          type="button"
-          onClick={publishPost}
-          className="mt-2 rounded-full bg-[#17120d] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#2f251c]"
-        >
-          重试发布
-        </button>
-      ) : null}
-      {success ? (
-        <p className="mt-3 text-sm font-medium text-[#617d48]">{success}</p>
-      ) : null}
     </form>
   );
 }

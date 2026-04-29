@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^7.2.7",
+    "@lobehub/ui": "^5.10.0",
     "@vercel/analytics": "^2.0.1",
     "ali-oss": "^6.23.0",
     "clsx": "^2.1.1",
