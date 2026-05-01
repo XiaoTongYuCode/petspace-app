@@ -14,6 +14,33 @@ type ProfileEditorProps = {
   profile: ProfileSummary | null;
 };
 
+type ProfilePatch = {
+  displayName?: string;
+  handle?: string;
+  bio?: string;
+  coverUrl?: string | null;
+  coverObjectKey?: string | null;
+};
+
+async function updateProfile(patch: ProfilePatch) {
+  const response = await fetch("/api/me/profile", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(patch),
+  });
+  const body = (await response.json().catch(() => null)) as
+    | { error?: string; coverUrl?: string | null; coverObjectKey?: string | null }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(body?.error ?? "保存失败。");
+  }
+
+  return body;
+}
+
 export function ProfileEditor({ profile }: ProfileEditorProps) {
   const router = useRouter();
   const [displayName, setDisplayName] = useState(profile?.displayName ?? "");
@@ -31,14 +58,28 @@ export function ProfileEditor({ profile }: ProfileEditorProps) {
 
   async function uploadProfileCover(file: File) {
     setError(null);
+    setSuccess(null);
     setUploading("cover");
+    const previousCoverUrl = coverUrl;
+    const previousCoverObjectKey = coverObjectKey;
 
     try {
       const result = await uploadImageToOss(file, "cover");
 
       setCoverUrl(result.url);
       setCoverObjectKey(result.objectKey);
+      const updated = await updateProfile({
+        coverUrl: result.url,
+        coverObjectKey: result.objectKey,
+      });
+
+      setCoverUrl(updated?.coverUrl ?? result.url);
+      setCoverObjectKey(updated?.coverObjectKey ?? result.objectKey);
+      setSuccess("背景图已更新。");
+      router.refresh();
     } catch (caught) {
+      setCoverUrl(previousCoverUrl);
+      setCoverObjectKey(previousCoverObjectKey);
       setError(caught instanceof Error ? caught.message : "上传失败。");
     } finally {
       setUploading(null);
@@ -52,26 +93,13 @@ export function ProfileEditor({ profile }: ProfileEditorProps) {
     setIsSaving(true);
 
     try {
-      const response = await fetch("/api/me/profile", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          displayName,
-          handle,
-          bio,
-          coverUrl,
-          coverObjectKey,
-        }),
+      await updateProfile({
+        displayName,
+        handle,
+        bio,
+        coverUrl,
+        coverObjectKey,
       });
-      const body = (await response.json().catch(() => null)) as
-        | { error?: string }
-        | null;
-
-      if (!response.ok) {
-        throw new Error(body?.error ?? "保存失败。");
-      }
 
       setSuccess("主页已更新。");
       router.refresh();
