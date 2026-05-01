@@ -759,6 +759,61 @@ export async function getPostsByAuthorId(authorId: string): Promise<FeedPost[]> 
   }
 }
 
+export async function getFavoritePosts(limit = 50): Promise<FeedPost[]> {
+  const db = getDbOrNull();
+
+  if (!db) {
+    return samplePosts.filter((post) => post.viewerHasFavorited);
+  }
+
+  const user = await ensureCurrentUser();
+
+  if (!user) {
+    return [];
+  }
+
+  try {
+    const key = cacheKey("favorite-posts", user.id, limit);
+
+    return await dataCache.getOrSet(
+      key,
+      async () => {
+        const rows = await db
+          .select({
+            postId: posts.id,
+            caption: posts.caption,
+            imageUrl: posts.imageUrl,
+            imageObjectKey: posts.imageObjectKey,
+            category: posts.category,
+            location: posts.location,
+            viewsCount: posts.viewsCount,
+            likesCount: posts.likesCount,
+            favoritesCount: posts.favoritesCount,
+            commentsCount: sql<number>`(select count(*)::int from ${postComments} where ${postComments.postId} = ${posts.id})`,
+            createdAt: posts.createdAt,
+            authorId: users.id,
+            authorHandle: users.handle,
+            authorDisplayName: users.displayName,
+            authorAvatarUrl: users.avatarUrl,
+            viewerHasLiked: sql<boolean>`exists(select 1 from ${postLikes} where ${postLikes.postId} = ${posts.id} and ${postLikes.userId} = ${user.id})`,
+            viewerHasFavorited: sql<boolean>`true`,
+          })
+          .from(postFavorites)
+          .innerJoin(posts, eq(postFavorites.postId, posts.id))
+          .innerJoin(users, eq(posts.authorId, users.id))
+          .where(eq(postFavorites.userId, user.id))
+          .orderBy(desc(postFavorites.createdAt))
+          .limit(limit);
+
+        return rows.map(mapPostRow);
+      },
+      { tags: [CACHE_TAGS.posts, viewerTag(user.id)] },
+    );
+  } catch {
+    return [];
+  }
+}
+
 export async function getCurrentUserProfile(): Promise<ProfileSummary | null> {
   const user = await ensureCurrentUser();
 

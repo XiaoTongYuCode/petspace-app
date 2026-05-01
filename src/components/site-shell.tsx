@@ -9,7 +9,7 @@ const navItems = [
   { href: "/compose", label: "发布动态", icon: ImagePlus },
   { href: "/u/petspace", label: "发现", icon: Compass },
   { href: "/me", label: "我的", icon: UserRound },
-  { href: "/me", label: "收藏", icon: Bookmark },
+  { href: "/favorites", label: "收藏", icon: Bookmark },
 ];
 
 export function SiteHeader() {

@@ -103,8 +103,8 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
 
     disabledReasonToastRef.current = disabledReason;
     Toast.warning({
-      title: "暂时不能发布",
-      description: disabledReason,
+      description: `暂时不能发布：${disabledReason}`,
+      closable: false,
     });
   }, [disabledReason]);
 
@@ -154,18 +154,8 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
 
   function showPublishError(message: string) {
     Toast.error({
-      title: "发布失败",
-      description: message,
-      actions: file
-        ? [
-            {
-              label: "重试发布",
-              onClick: () => {
-                void publishPost();
-              },
-            },
-          ]
-        : undefined,
+      description: `发布失败：${message}`,
+      closable: false,
     });
   }
 
@@ -175,18 +165,19 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
   }
 
   function showPublishingToast(description: string) {
+    const loadingText = `发布中：${description}`;
+
     if (publishToastRef.current) {
       publishToastRef.current.update({
-        title: "发布中",
-        description,
+        description: loadingText,
         type: "loading",
+        closable: false,
       });
       return;
     }
 
     publishToastRef.current = Toast.loading({
-      title: "发布中",
-      description,
+      description: loadingText,
       closable: false,
     });
   }
@@ -197,14 +188,16 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
     }
 
     if (!("geolocation" in navigator)) {
-      Toast.warning("当前浏览器不支持定位。");
+      Toast.warning({
+        description: "当前浏览器不支持定位。",
+        closable: false,
+      });
       return;
     }
 
     setIsLocating(true);
     const locatingToast = Toast.loading({
-      title: "正在定位",
-      description: "正在获取城市信息。",
+      description: "正在定位：正在获取城市信息。",
       closable: false,
     });
     navigator.geolocation.getCurrentPosition(
@@ -217,16 +210,18 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
           setLocation(cityLocation);
           locatingToast.close();
           Toast.success({
-            title: "城市已更新",
-            description: cityLocation,
+            description: `城市已更新：${cityLocation}`,
+            closable: false,
           });
         } catch (caught) {
           locatingToast.close();
-          Toast.error(
-            caught instanceof Error
-              ? caught.message
-              : "已获取定位，但暂时无法识别城市。",
-          );
+          Toast.error({
+            description:
+              caught instanceof Error
+                ? caught.message
+                : "已获取定位，但暂时无法识别城市。",
+            closable: false,
+          });
         } finally {
           setIsLocating(false);
         }
@@ -236,15 +231,20 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
         locatingToast.close();
 
         if (positionError.code === positionError.PERMISSION_DENIED) {
-          Toast.warning("需要允许浏览器定位权限后才能获取城市。");
+          Toast.warning({
+            description: "需要允许浏览器定位权限后才能获取城市。",
+            closable: false,
+          });
           return;
         }
 
-        Toast.error(
-          positionError.code === positionError.TIMEOUT
-            ? "城市定位超时，请稍后再试。"
-            : "暂时无法获取城市定位。",
-        );
+        Toast.error({
+          description:
+            positionError.code === positionError.TIMEOUT
+              ? "城市定位超时，请稍后再试。"
+              : "暂时无法获取城市定位。",
+          closable: false,
+        });
       },
       { enableHighAccuracy: false, maximumAge: 300000, timeout: 10000 },
     );
@@ -261,19 +261,25 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
 
     if (disabledReason) {
       Toast.warning({
-        title: "暂时不能发布",
-        description: disabledReason,
+        description: `暂时不能发布：${disabledReason}`,
+        closable: false,
       });
       return;
     }
 
     if (!caption.trim()) {
-      Toast.warning("写一点宠物今天的生活吧。");
+      Toast.warning({
+        description: "写一点宠物今天的生活吧。",
+        closable: false,
+      });
       return;
     }
 
     if (!file) {
-      Toast.warning("请选择一张图片。");
+      Toast.warning({
+        description: "请选择一张图片。",
+        closable: false,
+      });
       return;
     }
 
@@ -316,7 +322,10 @@ export function ComposeCard({ disabledReason = null }: ComposeCardProps) {
       setChallengeTag("#今日宠物微笑");
       updateFile(null);
       closePublishToast();
-      Toast.success("动态已发布。");
+      Toast.success({
+        description: "动态已发布。",
+        closable: false,
+      });
       if (typeof window !== "undefined") {
         window.localStorage.removeItem(DRAFT_STORAGE_KEY);
       }
