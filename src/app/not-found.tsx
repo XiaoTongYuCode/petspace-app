@@ -1,4 +1,13 @@
 import Link from "next/link";
+import { buildPageMetadata } from "@/lib/seo";
+
+export const metadata = buildPageMetadata({
+  title: "没有找到内容",
+  description: "这条 Petspace 动态或用户主页不存在，返回宠物广场继续浏览宠物日常。",
+  path: "/404",
+  image: "/brand/petspace-logo.png",
+  noIndex: true,
+});
 
 export default function NotFound() {
   return (

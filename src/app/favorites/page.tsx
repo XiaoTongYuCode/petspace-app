@@ -5,8 +5,16 @@ import { FeedList } from "@/components/feed-list";
 import { DesktopNav, MobileNav, SiteHeader } from "@/components/site-shell";
 import { getBackendStatus } from "@/lib/backend-status";
 import { getCurrentUserProfile, getFavoritePosts } from "@/lib/data";
+import { buildPageMetadata } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+export const metadata = buildPageMetadata({
+  title: "我的收藏",
+  description: "集中查看你在 Petspace 收藏的宠物照片和宠物日常动态。",
+  path: "/favorites",
+  image: "/samples/window-cat.png",
+  noIndex: true,
+});
 
 export default async function FavoritesPage() {
   const [backendStatus, profile, posts] = await Promise.all([

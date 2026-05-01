@@ -2,6 +2,15 @@ import { BackendStatusPanel } from "@/components/backend-status-panel";
 import { ComposeCard } from "@/components/compose-card";
 import { DesktopNav, MobileNav, SiteHeader } from "@/components/site-shell";
 import { getBackendStatus } from "@/lib/backend-status";
+import { buildPageMetadata } from "@/lib/seo";
+
+export const metadata = buildPageMetadata({
+  title: "发布宠物动态",
+  description: "在 Petspace 发布宠物照片、记录养宠日常并与宠物社区互动。",
+  path: "/compose",
+  image: "/brand/petspace-logo.png",
+  noIndex: true,
+});
 
 export default async function ComposePage() {
   const backendStatus = await getBackendStatus();

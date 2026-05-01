@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { PostCard } from "@/components/post-card";
 import { ProfileSummaryCard } from "@/components/profile-summary-card";
 import { DesktopNav, MobileNav, SiteHeader } from "@/components/site-shell";
@@ -6,14 +7,41 @@ import { Avatar } from "@/components/avatar";
 import { compactNumber } from "@/lib/format";
 import { getCurrentUserProfile, getProfileByHandle } from "@/lib/data";
 import { DEFAULT_PROFILE_COVER_URL } from "@/lib/profile-defaults";
+import {
+  JsonLd,
+  buildPageMetadata,
+  buildProfileMetadata,
+  profileJsonLd,
+} from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
+type ProfilePageProps = {
+  params: Promise<{ handle: string }>;
+};
+
+export async function generateMetadata({
+  params,
+}: ProfilePageProps): Promise<Metadata> {
+  const { handle } = await params;
+  const result = await getProfileByHandle(handle);
+
+  if (!result) {
+    return buildPageMetadata({
+      title: "没有找到主页",
+      description: "这个 Petspace 用户主页不存在或暂时无法访问。",
+      path: `/u/${handle}`,
+      image: "/brand/petspace-logo.png",
+      noIndex: true,
+    });
+  }
+
+  return buildProfileMetadata(result.profile);
+}
+
 export default async function ProfilePage({
   params,
-}: {
-  params: Promise<{ handle: string }>;
-}) {
+}: ProfilePageProps) {
   const { handle } = await params;
   const [result, currentProfile] = await Promise.all([
     getProfileByHandle(handle),
@@ -34,6 +62,7 @@ export default async function ProfilePage({
       <div className="mx-auto grid max-w-7xl grid-cols-1 gap-5 px-4 py-5 sm:gap-6 sm:px-6 sm:py-6 lg:grid-cols-[210px_minmax(0,1fr)] lg:px-8 lg:py-8 xl:grid-cols-[210px_minmax(0,680px)_320px]">
         <DesktopNav />
         <main className="min-w-0 space-y-5">
+          <JsonLd data={profileJsonLd(profile, posts)} />
           <section className="overflow-hidden rounded-lg bg-white/72 ring-1 ring-black/10">
             <div
               className="relative h-48 bg-cover bg-center"

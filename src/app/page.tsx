@@ -13,8 +13,16 @@ import {
   getFeedPosts,
 } from "@/lib/data";
 import { samplePosts, sampleProfile } from "@/lib/sample-data";
+import { JsonLd, buildPageMetadata, siteJsonLd } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+export const metadata = buildPageMetadata({
+  title: "宠物广场",
+  description:
+    "在 Petspace 宠物广场浏览猫咪、狗狗和更多宠物的照片日常，记录养宠故事，发现值得收藏的温暖瞬间。",
+  path: "/",
+  image: "/samples/walk-dog.png",
+});
 
 const getHomeBackendStatus = cache(() =>
   getBackendStatus(),
@@ -37,6 +45,7 @@ export default function Home() {
           </Suspense>
         </DesktopSidebar>
         <main className="min-w-0 space-y-5">
+          <JsonLd data={siteJsonLd()} />
           <HomeHero />
 
           <Suspense fallback={<ComposeFallback />}>

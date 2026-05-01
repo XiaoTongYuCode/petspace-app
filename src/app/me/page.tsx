@@ -4,8 +4,16 @@ import { ProfileEditor } from "@/components/profile-editor";
 import { DesktopNav, MobileNav, SiteHeader } from "@/components/site-shell";
 import { getBackendStatus } from "@/lib/backend-status";
 import { getCurrentUserProfile, getPostsByAuthorId } from "@/lib/data";
+import { buildPageMetadata } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+export const metadata = buildPageMetadata({
+  title: "我的主页",
+  description: "管理你的 Petspace 宠物主页、头像资料和已发布的宠物动态。",
+  path: "/me",
+  image: "/brand/petspace-logo.png",
+  noIndex: true,
+});
 
 export default async function MePage() {
   const [backendStatus, profile] = await Promise.all([
