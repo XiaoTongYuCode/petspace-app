@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, mock, test } from "node:test";
+import type OSSClient from "ali-oss";
 
 const originalEnv = {
   ALIYUN_ACCESS_KEY_ID: process.env.ALIYUN_ACCESS_KEY_ID,
@@ -28,7 +29,7 @@ test("uploadImageForUser uploads image through server-side OSS client", async (t
   process.env.ALIYUN_OSS_ENDPOINT = "oss-cn-beijing.aliyuncs.com";
   process.env.ALIYUN_OSS_PUBLIC_BASE_URL = "https://assets.example.test";
 
-  const putMock = mock.fn(async () => ({ name: "uploaded" }));
+  const putMock = mock.fn<OSSClient["put"]>(async () => ({ name: "uploaded" }));
 
   class MockOSSClient {
     put = putMock;

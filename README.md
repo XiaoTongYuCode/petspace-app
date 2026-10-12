@@ -4,10 +4,11 @@ Petspace is a warm pet-life sharing social platform MVP built with Next.js App R
 
 ## Local Development
 
-Use Node.js `>=20.9.0`.
+Use Node.js `24.x` (see `.nvmrc`).
 
 ```bash
-npm install
+nvm use
+npm ci
 npm run dev
 ```
 
